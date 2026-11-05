@@ -14,7 +14,7 @@ Codex est ton collègue sur ce poste. Appelle-le toi-même : l'utilisateur ne do
 2. Fais-la relire par Codex et corrige ce qui le mérite.
 3. Résume-la et attends l'accord explicite de l'utilisateur. N'écris aucun code avant. Si la spec change ensuite, redemande son accord.
 4. Par défaut, Codex code et tu relis. L'utilisateur peut inverser les rôles en le disant.
-5. Lance les tests du projet. Celui qui n'a pas codé relit. Corrigez et relisez, trois tours au maximum, puis demande à l'utilisateur comment continuer.
+5. Lance les tests du projet. Celui qui n'a pas codé relit. Corrigez et relisez, quinze tours au maximum, puis demande à l'utilisateur comment continuer.
 
 Une demande simple se traite directement, sans spec ni relecture.
 
@@ -40,7 +40,7 @@ Si `codex-safe` répond qu'un agent appelé ne peut pas rappeler son collègue, 
 Dès qu'une tâche a modifié du code ou une spec, même pour une demande simple, termine ta réponse par ce bilan :
 
 - **Relu par :** Codex, ou « personne » avec la raison.
-- **Tours de relecture :** le nombre, trois au maximum.
+- **Tours de relecture :** le nombre, quinze au maximum.
 - **Tests :** les commandes lancées et leur résultat, ou « aucun ».
 - **Reste ouvert :** ce qui n'est ni corrigé ni vérifié, ou « rien ».
 - **Tokens :** la sortie de `__CONSO_CLAUDE__`, recopiée telle quelle.

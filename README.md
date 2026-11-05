@@ -50,7 +50,7 @@ Lance `claude` ou `codex` dans ton projet et parle normalement. Il n'y a aucune 
 - « fais-le faire par Codex »
 - « fais relire ton code par Claude »
 
-Pour une nouvelle fonctionnalité, l'agent écrit une spec, la fait relire par son collègue et attend ton accord. Ensuite, l'un code, l'autre relit, en trois tours au maximum. Une demande simple se traite directement, sans spec ni relecture.
+Pour une nouvelle fonctionnalité, l'agent écrit une spec, la fait relire par son collègue et attend ton accord. Ensuite, l'un code, l'autre relit, en quinze tours au maximum. Une demande simple se traite directement, sans spec ni relecture.
 
 Quand une tâche a modifié du code ou une spec, l'agent termine par un bilan : qui a relu, combien de tours, quels tests ont été lancés, ce qui reste ouvert et les tokens utilisés.
 
@@ -80,7 +80,7 @@ Ces protections réduisent le risque sans le supprimer :
 Ces règles sont seulement des consignes, qu'un agent peut oublier :
 
 - Attendre ton accord avant de coder.
-- Limiter la relecture à trois tours.
+- Limiter la relecture à quinze tours.
 - Écrire le bilan de fin de tâche.
 - Ne jamais pousser ni fusionner, et ne pas créer de branche sans demande.
 - Ne pas appeler `claude` directement depuis Codex.
