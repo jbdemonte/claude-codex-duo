@@ -1,29 +1,41 @@
 # Travailler avec Claude
 
-Claude est ton collègue sur ce poste. Appelle-le toi-même : l'utilisateur ne doit jamais copier-coller quoi que ce soit entre vous.
+Claude est ton collègue sur ce poste. Appelle-le toi-même pour lire et relire : l'utilisateur ne doit pas copier-coller entre vous.
 
 ## Quand l'appeler
 
-- Quand l'utilisateur le demande avec ses mots : « demande à Claude », « fais-le faire par Claude », « qu'en pense Claude ».
+- Quand l'utilisateur le demande avec ses mots : « demande à Claude », « qu'en pense Claude ».
 - Sans qu'on te le demande, pour faire relire une spec ou du code non trivial que tu viens d'écrire.
 - Pas pour une question, une petite correction ou de l'exploration.
 
 ## Nouvelle fonctionnalité ou changement important
 
-1. Écris la spec, dans `tasks/` avec le numéro suivant si le projet utilise ce dossier.
+1. Écris la spec, dans `tasks/` avec le numéro suivant si le projet utilise ce dossier. Elle doit suffire à celui qui codera, sans le contexte de cette conversation.
 2. Fais-la relire par Claude et corrige ce qui le mérite.
 3. Résume-la et attends l'accord explicite de l'utilisateur. N'écris aucun code avant. Si la spec change ensuite, redemande son accord.
-4. Par défaut, tu codes et Claude relit. L'utilisateur peut inverser les rôles en le disant.
+4. Par défaut, tu codes et Claude relit. Si l'utilisateur veut que Claude code, passe-lui la main, comme indiqué dans « Faire coder Claude ».
 5. Lance les tests du projet. Celui qui n'a pas codé relit. Corrigez et relisez, quinze tours au maximum, puis demande à l'utilisateur comment continuer.
 
+Si l'utilisateur te demande de coder une spec déjà validée, code-la sans refaire les étapes 1 à 3, puis passe à l'étape 5. Si elle doit changer, redemande son accord.
+
 Une demande simple se traite directement, sans spec ni relecture.
+
+## Faire coder Claude
+
+L'utilisateur veut voir Claude travailler. Quand Claude doit coder, y compris s'il dit « fais-le faire par Claude », ne le lance pas, sauf s'il demande explicitement de le faire en arrière-plan. Donne-lui cette phrase à taper dans sa session Claude :
+
+> La spec <chemin> est validée. Code-la dans cette session, lance les tests, puis fais relire ton code par Codex.
+
+Avant de t'arrêter, commite la spec si elle a changé et termine par le bilan, avec l'implémentation dans « Reste ouvert ».
+
+Pour une demande simple sans spec, donne seulement une phrase qui décrit le travail, sans demander de relecture.
 
 ## Comment l'appeler
 
 Passe toujours par `__CLAUDE_SAFE__`, jamais par `claude` directement :
 
 - `claude-safe lire "message"` : Claude lit et répond, sans rien modifier. Pour une relecture, indique-lui le commit à relire ou demande-lui de relire les changements non commités : il sait lancer `git show` et `git diff`.
-- `claude-safe coder "message"` : Claude modifie le projet, sans commiter.
+- `claude-safe coder "message"` : Claude modifie le projet, sans commiter. L'utilisateur ne voit pas son travail : lance-le seulement s'il demande explicitement de le faire en arrière-plan.
 - `claude-safe oublie` : à lancer au début d'une nouvelle tâche. Sinon, Claude garde le fil de la conversation dans ce projet.
 
 <!-- windows -->

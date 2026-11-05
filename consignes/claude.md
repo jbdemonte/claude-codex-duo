@@ -1,29 +1,41 @@
 # Travailler avec Codex
 
-Codex est ton collègue sur ce poste. Appelle-le toi-même : l'utilisateur ne doit jamais copier-coller quoi que ce soit entre vous.
+Codex est ton collègue sur ce poste. Appelle-le toi-même pour lire et relire : l'utilisateur ne doit pas copier-coller entre vous.
 
 ## Quand l'appeler
 
-- Quand l'utilisateur le demande avec ses mots : « demande à Codex », « fais-le faire par Codex », « qu'en pense Codex ».
+- Quand l'utilisateur le demande avec ses mots : « demande à Codex », « qu'en pense Codex ».
 - Sans qu'on te le demande, pour faire relire une spec ou du code non trivial que tu viens d'écrire.
 - Pas pour une question, une petite correction ou de l'exploration.
 
 ## Nouvelle fonctionnalité ou changement important
 
-1. Écris la spec, dans `tasks/` avec le numéro suivant si le projet utilise ce dossier.
+1. Écris la spec, dans `tasks/` avec le numéro suivant si le projet utilise ce dossier. Elle doit suffire à celui qui codera, sans le contexte de cette conversation.
 2. Fais-la relire par Codex et corrige ce qui le mérite.
 3. Résume-la et attends l'accord explicite de l'utilisateur. N'écris aucun code avant. Si la spec change ensuite, redemande son accord.
-4. Par défaut, Codex code et tu relis. L'utilisateur peut inverser les rôles en le disant.
+4. Par défaut, Codex code et tu relis : passe-lui la main, comme indiqué dans « Faire coder Codex ». L'utilisateur peut inverser les rôles en le disant : tu codes alors toi-même et Codex relit.
 5. Lance les tests du projet. Celui qui n'a pas codé relit. Corrigez et relisez, quinze tours au maximum, puis demande à l'utilisateur comment continuer.
 
+Si l'utilisateur te demande de coder une spec déjà validée, code-la sans refaire les étapes 1 à 3, puis passe à l'étape 5. Si elle doit changer, redemande son accord.
+
 Une demande simple se traite directement, sans spec ni relecture.
+
+## Faire coder Codex
+
+L'utilisateur veut voir Codex travailler. Quand Codex doit coder, y compris s'il dit « fais-le faire par Codex », ne le lance pas, sauf s'il demande explicitement de le faire en arrière-plan. Donne-lui cette phrase à taper dans sa session Codex :
+
+> La spec <chemin> est validée. Code-la dans cette session, lance les tests, puis fais relire ton code par Claude.
+
+Avant de t'arrêter, commite la spec si elle a changé et termine par le bilan, avec l'implémentation dans « Reste ouvert ».
+
+Pour une demande simple sans spec, donne seulement une phrase qui décrit le travail, sans demander de relecture.
 
 ## Comment l'appeler
 
 Passe toujours par `__CODEX_SAFE__`, jamais par `codex` directement :
 
 - `codex-safe lire "message"` : Codex lit et répond, sans rien modifier.
-- `codex-safe coder "message"` : Codex modifie le projet, sans commiter.
+- `codex-safe coder "message"` : Codex modifie le projet, sans commiter. L'utilisateur ne voit pas son travail : lance-le seulement s'il demande explicitement de le faire en arrière-plan.
 - `codex-safe review <sha>` : Codex relit un commit.
 - `codex-safe oublie` : à lancer au début d'une nouvelle tâche. Sinon, Codex garde le fil de la conversation dans ce projet.
 
