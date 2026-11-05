@@ -1,0 +1,79 @@
+#!/bin/sh
+# Appelle Codex uniquement avec le login ChatGPT. Refuse et s'arrête sinon.
+#
+#   codex-safe check            vérifie les logins Claude et Codex
+#   codex-safe lire  "message"  Codex lit et répond, sans rien modifier
+#   codex-safe coder "message"  Codex modifie le projet, sans commiter
+#   codex-safe review <sha>     Codex relit un commit
+#   codex-safe oublie           la prochaine demande repart de zéro
+#
+# Codex garde le fil de la conversation entre deux appels du même projet.
+# Option : DUO_MODEL=<modèle> pour choisir un autre modèle.
+set -u
+. "$(dirname "$0")/commun.sh"
+
+# DUO_ACTIF doit atteindre les commandes de Codex quelle que soit sa politique d'environnement.
+config='-c forced_login_method="chatgpt" -c model_provider="openai" -c shell_environment_policy.set.DUO_ACTIF="1" -c shell_environment_policy.include_only=[]'
+model=${DUO_MODEL:+-m $DUO_MODEL}
+
+# Lance Codex et n'affiche que sa réponse finale. Le journal complet reste
+# disponible pour comprendre un échec, y compris un quota atteint.
+talk() {
+  refuse_nested
+  check_codex
+  memory=$(memory_file codex)
+  session=$(recent_session codex)
+  log=$(mktemp -t duo-codex) answer=$(mktemp -t duo-codex-reponse)
+  # shellcheck disable=SC2086
+  if [ -n "$session" ]; then
+    safe_env "$CODEX" exec resume $config -c "sandbox_mode=\"$1\"" $model \
+      --json -o "$answer" "$session" "$2" >"$log" 2>&1 </dev/null
+  else
+    safe_env "$CODEX" exec $config --sandbox "$1" $model \
+      --json -o "$answer" "$2" >"$log" 2>&1 </dev/null
+  fi
+  code=$?
+  if [ "$code" -ne 0 ]; then
+    tail -n 20 "$log" >&2
+    stop "Codex a échoué (code $code). Journal : $log"
+  fi
+  if [ -z "$session" ]; then
+    sed -n 's/.*"thread_id":"\([^"]*\)".*/\1/p' "$log" | head -n 1 >"$memory"
+  fi
+  touch "$memory"
+  cat "$answer"
+}
+
+case "${1:-}" in
+  check)
+    check_codex
+    check_claude
+    echo "OK : Codex sur ChatGPT, Claude sur claude.ai, clés API retirées."
+    ;;
+  lire)
+    [ $# -eq 2 ] || stop 'usage : codex-safe lire "message"'
+    talk read-only "$2"
+    ;;
+  coder)
+    [ $# -eq 2 ] || stop 'usage : codex-safe coder "message"'
+    talk workspace-write "$2"
+    ;;
+  review)
+    [ $# -eq 2 ] || stop 'usage : codex-safe review <sha>'
+    refuse_nested
+    check_codex
+    log=$(mktemp -t duo-codex-review)
+    # shellcheck disable=SC2086
+    safe_env "$CODEX" review $config $model --commit "$2" >"$log" 2>&1 </dev/null
+    code=$?
+    sed -n 's/^session id: //p' "$log" | head -n 1 >>"$(memory_file codex-reviews)"
+    tail -n 80 "$log"
+    [ "$code" -eq 0 ] || stop "Codex a échoué (code $code). Journal : $log"
+    ;;
+  oublie)
+    rm -f "$(memory_file codex)" "$(memory_file codex-reviews)"
+    ;;
+  *)
+    stop 'usage : codex-safe check | lire "message" | coder "message" | review <sha> | oublie'
+    ;;
+esac

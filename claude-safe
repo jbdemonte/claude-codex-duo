@@ -1,0 +1,59 @@
+#!/bin/sh
+# Appelle Claude uniquement avec le login claude.ai. Refuse et s'arrête sinon.
+#
+#   claude-safe lire  "message"  Claude lit et répond, sans rien modifier
+#   claude-safe coder "message"  Claude modifie le projet, sans commiter ni pousser
+#   claude-safe oublie           la prochaine demande repart de zéro
+#
+# Claude garde le fil de la conversation entre deux appels du même projet.
+# Option : DUO_MODEL=<modèle> pour choisir un autre modèle.
+set -u
+. "$(dirname "$0")/commun.sh"
+
+model=${DUO_MODEL:-opus}
+
+talk() {
+  refuse_nested
+  check_claude
+  memory=$(memory_file claude)
+  session=$(recent_session claude)
+  log=$(mktemp -t duo-claude)
+  set -- "$1" "$2" ${session:+--resume "$session"}
+  mode=$1 message=$2
+  shift 2
+  if [ "$mode" = coder ]; then
+    set -- "$@" --permission-mode acceptEdits --allowedTools Bash \
+      --disallowedTools 'Bash(git push *),Bash(git merge *),Bash(git commit *),Bash(git rebase *),Bash(git reset *),Bash(git -C *),Bash(git -c *)'
+  else
+    set -- "$@" --permission-mode default --disallowedTools 'Write,Edit,NotebookEdit'
+  fi
+  safe_env "$CLAUDE" -p "$message" --model "$model" --output-format json "$@" >"$log" 2>&1 </dev/null
+  code=$?
+  if [ "$code" -ne 0 ]; then
+    tail -n 20 "$log" >&2
+    stop "Claude a échoué (code $code). Journal : $log"
+  fi
+  /usr/bin/python3 - "$log" "$memory" <<'EOF' || stop "Réponse de Claude illisible. Journal : $log"
+import json, sys
+log, memory = sys.argv[1:]
+text = open(log, errors='replace').read()
+result = json.loads(text[text.index('{'):])
+if result.get('is_error'):
+    sys.exit(result.get('result') or 1)
+open(memory, 'w').write(result['session_id'] + '\n')
+print(result['result'])
+EOF
+}
+
+case "${1:-}" in
+  lire|coder)
+    [ $# -eq 2 ] || stop "usage : claude-safe $1 \"message\""
+    talk "$1" "$2"
+    ;;
+  oublie)
+    rm -f "$(memory_file claude)"
+    ;;
+  *)
+    stop 'usage : claude-safe lire "message" | coder "message" | oublie'
+    ;;
+esac

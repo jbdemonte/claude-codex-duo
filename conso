@@ -1,0 +1,101 @@
+#!/usr/bin/python3
+"""Donne une idée des tokens utilisés, à partir des journaux locaux de Claude et de Codex.
+
+Compte la session de l'agent qui le lance et le fil en cours de son collègue.
+N'appelle aucun modèle et ne dit rien du quota restant.
+"""
+import functools
+import glob
+import hashlib
+import json
+import os
+import subprocess
+
+
+def entries(pattern):
+    for path in glob.glob(os.path.expanduser(pattern)):
+        for line in open(path, errors='replace'):
+            try:
+                yield json.loads(line)
+            except ValueError:
+                continue
+
+
+def claude_tokens(session):
+    # Un message est répété pour chaque bloc de contenu : il ne compte qu'une fois.
+    usages = {}
+    for pattern in (f'{session}.jsonl', f'{session}/subagents/*.jsonl'):
+        for entry in entries(f'~/.claude/projects/*/{pattern}'):
+            if entry.get('type') == 'assistant' and entry['message'].get('usage'):
+                usages[entry['message'].get('id')] = entry['message']['usage']
+
+    def total(key):
+        return sum(usage.get(key, 0) for usage in usages.values())
+
+    cached = total('cache_read_input_tokens')
+    read = total('input_tokens') + cached + total('cache_creation_input_tokens')
+    return read, cached, total('output_tokens')
+
+
+@functools.cache
+def codex_children():
+    children = {}
+    for path in glob.glob(os.path.expanduser('~/.codex/sessions/*/*/*/*.jsonl')):
+        with open(path, errors='replace') as log:
+            try:
+                meta = json.loads(log.readline()).get('payload') or {}
+            except ValueError:
+                continue
+        children.setdefault(meta.get('parent_thread_id'), []).append(meta.get('id'))
+    return children
+
+
+def codex_thread_tokens(thread):
+    # Chaque événement redonne le total du fil, reprises comprises : seul le dernier compte.
+    usage = {}
+    for entry in entries(f'~/.codex/sessions/*/*/*/*{thread}.jsonl'):
+        payload = entry.get('payload') or {}
+        if payload.get('type') == 'token_count' and payload.get('info'):
+            usage = payload['info']['total_token_usage']
+    return usage.get('input_tokens', 0), usage.get('cached_input_tokens', 0), usage.get('output_tokens', 0)
+
+
+def codex_tokens(session):
+    # `codex review` et le relecteur automatique tournent dans des sous-agents à part.
+    threads = [session]
+    for thread in threads:
+        threads += codex_children().get(thread, [])
+    return [sum(values) for values in zip(*map(codex_thread_tokens, threads))]
+
+
+def remembered(name):
+    root = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
+    key = hashlib.sha256((root or os.getcwd()).encode()).hexdigest()[:16]
+    try:
+        return open(os.path.expanduser(f'~/.local/state/duo/{key}.{name}')).read().split()
+    except OSError:
+        return []
+
+
+def show(label, count, sessions):
+    if not sessions:
+        print(f'{label} : pas appelé')
+        return
+    totals = [sum(values) for values in zip(*map(count, sessions))]
+    if not any(totals):
+        print(f'{label} : inconnu')
+        return
+    read, cached, generated = (f'{n:,}'.replace(',', ' ') for n in totals)
+    print(f'{label} : {read} lus, dont {cached} en cache, et {generated} générés')
+
+
+thread = os.environ.get('CODEX_THREAD_ID')
+session = os.environ.get('CLAUDE_CODE_SESSION_ID')
+if thread:
+    show('Codex, session en cours', codex_tokens, [thread])
+    show('Claude, fil en cours', claude_tokens, remembered('claude'))
+elif session:
+    show('Claude, session en cours', claude_tokens, [session])
+    show('Codex, fil en cours', codex_tokens, remembered('codex') + remembered('codex-reviews'))
+else:
+    print('Session en cours inconnue.')
