@@ -1,7 +1,7 @@
 #!/bin/sh
 # Appelle Codex uniquement avec le login ChatGPT. Refuse et s'arrête sinon.
 #
-#   codex-safe check            vérifie les logins Claude et Codex
+#   codex-safe check            vérifie les logins, les réglages et le verrou de dépense
 #   codex-safe lire  "message"  Codex lit et répond, sans rien modifier
 #   codex-safe coder "message"  Codex modifie le projet, sans commiter
 #   codex-safe review <sha>     Codex relit un commit
@@ -33,14 +33,15 @@ talk() {
       --json -o "$answer" "$2" >"$log" 2>&1 </dev/null
   fi
   code=$?
-  if [ "$code" -ne 0 ]; then
-    tail -n 20 "$log" >&2
-    stop "Codex a échoué (code $code). Journal : $log"
-  fi
+  # Noté même après un échec : l'appel a pu consommer des tokens.
   if [ -z "$session" ]; then
     sed -n 's/.*"thread_id":"\([^"]*\)".*/\1/p' "$log" | head -n 1 >"$memory"
   fi
   touch "$memory"
+  if [ "$code" -ne 0 ]; then
+    tail -n 20 "$log" >&2
+    stop "Codex a échoué (code $code). Journal : $log"
+  fi
   cat "$answer"
 }
 
@@ -48,7 +49,7 @@ case "${1:-}" in
   check)
     check_codex
     check_claude
-    echo "OK : Codex sur ChatGPT, Claude sur claude.ai, clés API retirées."
+    echo "OK : Codex sur ChatGPT, Claude sur claude.ai, clés API retirées, verrou de dépense passé."
     ;;
   lire)
     [ $# -eq 2 ] || stop 'usage : codex-safe lire "message"'
@@ -63,10 +64,13 @@ case "${1:-}" in
     refuse_nested
     check_codex
     log=$(mktemp -t duo-codex-review)
+    reviews=$(memory_file codex-reviews)
+    # Comme pour les fils : une revue de plus de 12 heures est oubliée.
+    [ -n "$(recent_session codex-reviews)" ] || : >"$reviews"
     # shellcheck disable=SC2086
     safe_env "$CODEX" review $config $model --commit "$2" >"$log" 2>&1 </dev/null
     code=$?
-    sed -n 's/^session id: //p' "$log" | head -n 1 >>"$(memory_file codex-reviews)"
+    sed -n 's/^session id: //p' "$log" | head -n 1 >>"$reviews"
     tail -n 80 "$log"
     [ "$code" -eq 0 ] || stop "Codex a échoué (code $code). Journal : $log"
     ;;

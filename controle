@@ -1,0 +1,137 @@
+#!/usr/bin/python3
+"""Refuse un appel dès qu'il pourrait sortir de l'abonnement.
+
+    controle codex     login, destination des requêtes et quota
+    controle claude    destination des requêtes et usage supplémentaire
+
+N'affiche jamais la valeur d'un réglage. Dans le doute, refuse : si un format
+interne change, les appels s'arrêtent au lieu de passer sans contrôle.
+"""
+import datetime
+import glob
+import json
+import math
+import os
+import re
+import subprocess
+import sys
+import time
+
+# Au-delà du quota, Codex puise dans les crédits payants : on s'arrête avant.
+CODEX_QUOTA_MAX = 90
+
+# Lecture ligne à ligne : le Python de macOS n'a pas de parseur TOML. Un profil inactif est donc
+# refusé lui aussi, ce qui va dans le sens de la prudence.
+CODEX_REDIRECT = re.compile(r"""\s*(?:[\w."' -]+\.)?["']?(openai_base_url|chatgpt_base_url|profile|model_provider)["']?\s*=\s*(.*)""")
+CLAUDE_REDIRECT = re.compile(r'ANTHROPIC_.*(BASE_URL|API_KEY|AUTH_TOKEN)|ANTHROPIC_PROFILE|AWS_BEARER_TOKEN_BEDROCK'
+                             r'|CLAUDE_CONFIG_DIR|CLAUDE_CODE_USE_(ANTHROPIC_AWS|BEDROCK|FOUNDRY|MANTLE|VERTEX)')
+
+
+def stop(message):
+    sys.exit(f'ARRÊT : {message}')
+
+
+def home(path):
+    return os.path.join(os.path.expanduser('~'), path)
+
+
+def check_codex_login():
+    try:
+        auth = json.load(open(home('.codex/auth.json')))
+    except (OSError, ValueError):
+        auth = {}
+    if auth.get('auth_mode') != 'chatgpt' or auth.get('OPENAI_API_KEY'):
+        stop('Codex doit utiliser le login ChatGPT, sans clé API.')
+
+
+def check_codex_destination():
+    # Codex ignore ces clés dans le .codex/config.toml d'un projet.
+    for path in (home('.codex/config.toml'), '/etc/codex/config.toml'):
+        if not os.path.exists(path):
+            continue
+        for line in open(path, encoding='utf-8'):
+            key = line.split('=', 1)[0]
+            if '=' in line and '"' in key and '\\' in key:
+                stop(f"clé avec échappement dans {path} : impossible de vérifier où elle envoie Codex.")
+            found = CODEX_REDIRECT.match(line)
+            if not found:
+                continue
+            value = found[2].split('#')[0].strip().strip('"\'')
+            if found[1] != 'model_provider' or value != 'openai':
+                stop(f"{found[1]} dans {path} peut envoyer Codex ailleurs que sur l'abonnement.")
+
+
+def last_codex_limits():
+    # Seuls les 50 derniers journaux comptent : si les relevés disparaissent, l'appel finit refusé.
+    paths = glob.glob(home('.codex/sessions/*/*/*/rollout-*.jsonl'))
+    latest, limits = '', None
+    for path in sorted(paths, key=os.path.getmtime, reverse=True)[:50]:
+        modified = datetime.datetime.fromtimestamp(os.path.getmtime(path), datetime.timezone.utc)
+        if modified.strftime('%Y-%m-%dT%H:%M:%S.%f') < latest:
+            break  # Ce journal et les suivants sont plus anciens que le relevé trouvé.
+        for line in open(path, errors='replace'):
+            if '"rate_limits"' not in line:
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            found = (event.get('payload') or {}).get('rate_limits')
+            if found and event['timestamp'] > latest:
+                latest, limits = event['timestamp'], found
+    return limits
+
+
+def check_codex_quota():
+    limits = last_codex_limits() or {}
+    windows = [window for window in (limits.get('primary'), limits.get('secondary')) if window]
+    if not windows:
+        stop('quota Codex inconnu : lance une fois codex à la main, puis recommence.')
+    for window in windows:
+        used, reset = window['used_percent'], window['resets_at']
+        if not all(type(value) in (int, float) and math.isfinite(value) for value in (used, reset)):
+            stop('quota Codex illisible, appel refusé.')
+        if reset > time.time() and used >= CODEX_QUOTA_MAX:
+            date = datetime.datetime.fromtimestamp(reset).strftime('%d/%m à %H:%M')
+            stop(f"quota Codex à {used:.0f} %, au-delà l'usage peut devenir payant. Prochain renouvellement : {date}.")
+
+
+def claude_settings_files():
+    root = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
+    yield home('.claude/settings.json')
+    yield '/Library/Application Support/ClaudeCode/managed-settings.json'
+    yield from glob.glob('/Library/Application Support/ClaudeCode/managed-settings.d/*.json')
+    for folder in {os.getcwd(), root or os.getcwd()}:
+        yield os.path.join(folder, '.claude/settings.json')
+        yield os.path.join(folder, '.claude/settings.local.json')
+
+
+def check_claude_destination():
+    for path in claude_settings_files():
+        if not os.path.exists(path):
+            continue
+        settings = json.load(open(path, encoding='utf-8'))
+        names = [name for name, value in (settings.get('env') or {}).items()
+                 if value != '' and CLAUDE_REDIRECT.fullmatch(name)]
+        if settings.get('apiKeyHelper'):
+            names.append('apiKeyHelper')
+        if names:
+            stop(f"{', '.join(names)} dans {path} peut envoyer Claude ailleurs que sur l'abonnement.")
+
+
+def check_claude_usage():
+    account = json.load(open(home('.claude.json'))).get('oauthAccount') or {}
+    if account.get('hasExtraUsageEnabled') is not False:
+        stop("usage supplémentaire Claude activé ou inconnu : coupe-le dans claude.ai, Settings > Usage, puis ouvre une session claude pour mettre à jour le compte local.")
+
+
+CHECKS = {
+    'codex': (check_codex_login, check_codex_destination, check_codex_quota),
+    'claude': (check_claude_destination, check_claude_usage),
+}
+
+try:
+    for check in CHECKS[sys.argv[1]]:
+        check()
+except (AttributeError, IndexError, KeyError, OSError, TypeError, ValueError) as error:
+    stop(f'contrôle impossible ({type(error).__name__}), appel refusé.')

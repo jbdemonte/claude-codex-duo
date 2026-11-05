@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 
 
 def entries(pattern):
@@ -71,8 +72,12 @@ def codex_tokens(session):
 def remembered(name):
     root = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
     key = hashlib.sha256((root or os.getcwd()).encode()).hexdigest()[:16]
+    path = os.path.expanduser(f'~/.local/state/duo/{key}.{name}')
     try:
-        return open(os.path.expanduser(f'~/.local/state/duo/{key}.{name}')).read().split()
+        # Comme dans commun.sh : un fil de plus de 12 heures est oublié.
+        if time.time() - os.path.getmtime(path) > 12 * 3600:
+            return []
+        return open(path).read().split()
     except OSError:
         return []
 

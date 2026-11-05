@@ -29,18 +29,16 @@ talk() {
   fi
   safe_env "$CLAUDE" -p "$message" --model "$model" --output-format json "$@" >"$log" 2>&1 </dev/null
   code=$?
-  if [ "$code" -ne 0 ]; then
-    tail -n 20 "$log" >&2
-    stop "Claude a échoué (code $code). Journal : $log"
-  fi
-  /usr/bin/python3 - "$log" "$memory" <<'EOF' || stop "Réponse de Claude illisible. Journal : $log"
+  /usr/bin/python3 -I - "$log" "$memory" "$code" 2>/dev/null <<'EOF' || { tail -n 20 "$log" >&2; stop "Claude a échoué (code $code). Journal : $log"; }
 import json, sys
-log, memory = sys.argv[1:]
+log, memory, code = sys.argv[1:]
 text = open(log, errors='replace').read()
 result = json.loads(text[text.index('{'):])
-if result.get('is_error'):
-    sys.exit(result.get('result') or 1)
-open(memory, 'w').write(result['session_id'] + '\n')
+# Noté même après un échec : l'appel a pu consommer des tokens.
+if result.get('session_id'):
+    open(memory, 'w').write(result['session_id'] + '\n')
+if code != '0' or result.get('is_error'):
+    sys.exit(1)
 print(result['result'])
 EOF
 }

@@ -18,6 +18,7 @@ import os
 import shlex
 import shutil
 import sys
+import tempfile
 
 duo, codex, claude = sys.argv[1:]
 home = os.path.expanduser('~')
@@ -68,16 +69,27 @@ def save(path, text):
     if text == read(path):
         print(f'Inchangé : {path}')
         return
-    if os.path.exists(path):
-        os.makedirs(backups, exist_ok=True)
-        shutil.copy2(path, backups)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as target:
-        target.write(text)
+    # Un lien symbolique reste en place : c'est le fichier qu'il désigne qui change.
+    target = os.path.realpath(path)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    # Le fichier temporaire est créé en 0600 : il peut contenir des réglages confidentiels.
+    descriptor, temporary = tempfile.mkstemp(prefix='.duo-', dir=os.path.dirname(target))
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
+            output.write(text)
+        if os.path.exists(target):
+            shutil.copymode(target, temporary)
+            os.makedirs(backups, exist_ok=True)
+            shutil.copy2(target, os.path.join(backups, os.path.basename(path)))
+        os.replace(temporary, target)
+    except BaseException:
+        os.unlink(temporary)
+        raise
     print(f'Mis à jour : {path}')
 
 
-# Tout est calculé avant la première écriture : une erreur ne laisse rien à moitié installé.
+# Tout est calculé avant la première écriture, et chaque fichier est remplacé d'un coup.
+# Si une écriture échoue, les fichiers déjà remplacés restent corrects : il suffit de relancer.
 claude_md = os.path.join(home, '.claude/CLAUDE.md')
 agents_md = os.path.join(home, '.codex/AGENTS.md')
 settings_json = os.path.join(home, '.claude/settings.json')
@@ -94,5 +106,5 @@ with open('chemins.sh', 'w', encoding='utf-8') as paths:
     paths.write(f'CODEX={shlex.quote(codex)}\nCLAUDE={shlex.quote(claude)}\n')
 EOF
 
-"$duo/codex-safe" check || stop "connecte-toi avec claude auth login et codex login, puis relance ./install.sh."
-echo "Terminé. Ouvre une nouvelle session claude ou codex pour charger les consignes."
+echo "Installé. Ouvre une nouvelle session claude ou codex pour charger les consignes."
+"$duo/codex-safe" check || stop "duo refusera les appels tant que ce point n'est pas réglé."
