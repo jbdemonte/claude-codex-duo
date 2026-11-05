@@ -122,7 +122,7 @@ def check_claude_destination():
 def check_claude_usage():
     account = json.load(open(home('.claude.json'))).get('oauthAccount') or {}
     if account.get('hasExtraUsageEnabled') is not False:
-        stop("usage supplémentaire Claude activé ou inconnu : coupe-le dans claude.ai, Settings > Usage, puis ouvre une session claude pour mettre à jour le compte local.")
+        stop("usage supplémentaire Claude activé ou inconnu : coupe-le dans claude.ai, Settings > Usage, puis lance claude auth login pour mettre à jour le compte local.")
 
 
 CHECKS = {

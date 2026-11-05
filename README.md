@@ -13,7 +13,7 @@ Claude Code et Codex CLI travaillent ensemble sur tes projets, sans copier-colle
 
 Au-delà du quota, l'usage payant peut prendre le relais au lieu de tout arrêter. Les scripts ont un verrou contre ça, mais il est partiel et ne protège pas un `claude` ou un `codex` lancé à la main :
 
-- **Claude :** avec les crédits d'usage, Claude Code passe au tarif à l'usage. Désactive-les dans [Settings > Usage](https://claude.ai/settings/usage), puis ouvre une session `claude` pour mettre à jour le compte local. `claude-safe` refuse de tourner tant qu'ils sont activés.
+- **Claude :** avec les crédits d'usage, Claude Code passe au tarif à l'usage. Désactive-les dans [Settings > Usage](https://claude.ai/settings/usage), puis lance `claude auth login` pour mettre à jour le compte local. `claude-safe` refuse de tourner tant qu'ils sont activés.
 - **Codex :** une fois les limites du forfait atteintes, l'usage puise dans le solde de crédits. Vérifie ce solde et le rechargement automatique dans Codex Settings > Usage Dashboard. `codex-safe` s'arrête à 90 % du quota, d'après les journaux locaux.
 
 Sur une nouvelle machine, lance une fois `codex` à la main : sans journal, le quota est inconnu et `codex-safe` refuse de tourner.
