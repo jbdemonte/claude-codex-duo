@@ -7,6 +7,7 @@
 #   codex-safe review <sha>     Codex relit un commit
 #   codex-safe oublie           la prochaine demande repart de zéro
 #
+# Le message peut aussi venir de DUO_MESSAGE, sans le deuxième argument.
 # Codex garde le fil de la conversation entre deux appels du même projet.
 # Option : DUO_MODEL=<modèle> pour choisir un autre modèle.
 set -u
@@ -23,14 +24,14 @@ talk() {
   check_codex
   memory=$(memory_file codex)
   session=$(recent_session codex)
-  log=$(mktemp -t duo-codex) answer=$(mktemp -t duo-codex-reponse)
+  log=$(temporary duo-codex) answer=$(temporary duo-codex-reponse)
   # shellcheck disable=SC2086
   if [ -n "$session" ]; then
     safe_env "$CODEX" exec resume $config -c "sandbox_mode=\"$1\"" $model \
-      --json -o "$answer" "$session" "$2" >"$log" 2>&1 </dev/null
+      --json -o "$answer" "$session" - >"$log" 2>&1 <"$2"
   else
     safe_env "$CODEX" exec $config --sandbox "$1" $model \
-      --json -o "$answer" "$2" >"$log" 2>&1 </dev/null
+      --json -o "$answer" - >"$log" 2>&1 <"$2"
   fi
   code=$?
   # Noté même après un échec : l'appel a pu consommer des tokens.
@@ -40,7 +41,7 @@ talk() {
   touch "$memory"
   if [ "$code" -ne 0 ]; then
     tail -n 20 "$log" >&2
-    stop "Codex a échoué (code $code). Journal : $log"
+    stop "Codex a échoué (code $code). Journal : $(shown "$log")"
   fi
   cat "$answer"
 }
@@ -52,18 +53,18 @@ case "${1:-}" in
     echo "OK : Codex sur ChatGPT, Claude sur claude.ai, clés API retirées, verrou de dépense passé."
     ;;
   lire)
-    [ $# -eq 2 ] || stop 'usage : codex-safe lire "message"'
-    talk read-only "$2"
+    prompt=$(message_file "$@") || exit 1
+    talk read-only "$prompt"
     ;;
   coder)
-    [ $# -eq 2 ] || stop 'usage : codex-safe coder "message"'
-    talk workspace-write "$2"
+    prompt=$(message_file "$@") || exit 1
+    talk workspace-write "$prompt"
     ;;
   review)
     [ $# -eq 2 ] || stop 'usage : codex-safe review <sha>'
     refuse_nested
     check_codex
-    log=$(mktemp -t duo-codex-review)
+    log=$(temporary duo-codex-review)
     reviews=$(memory_file codex-reviews)
     # Comme pour les fils : une revue de plus de 12 heures est oubliée.
     [ -n "$(recent_session codex-reviews)" ] || : >"$reviews"
@@ -72,7 +73,7 @@ case "${1:-}" in
     code=$?
     sed -n 's/^session id: //p' "$log" | head -n 1 >>"$reviews"
     tail -n 80 "$log"
-    [ "$code" -eq 0 ] || stop "Codex a échoué (code $code). Journal : $log"
+    [ "$code" -eq 0 ] || stop "Codex a échoué (code $code). Journal : $(shown "$log")"
     ;;
   oublie)
     rm -f "$(memory_file codex)" "$(memory_file codex-reviews)"

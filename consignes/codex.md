@@ -20,12 +20,23 @@ Une demande simple se traite directement, sans spec ni relecture.
 
 ## Comment l'appeler
 
-Passe toujours par `__DUO__/claude-safe`, jamais par `claude` directement :
+Passe toujours par `__CLAUDE_SAFE__`, jamais par `claude` directement :
 
 - `claude-safe lire "message"` : Claude lit et répond, sans rien modifier. Pour une relecture, indique-lui le commit à relire ou demande-lui de relire les changements non commités : il sait lancer `git show` et `git diff`.
 - `claude-safe coder "message"` : Claude modifie le projet, sans commiter.
 - `claude-safe oublie` : à lancer au début d'une nouvelle tâche. Sinon, Claude garde le fil de la conversation dans ce projet.
 
+<!-- windows -->
+Sous Windows, ne mets pas le message en argument : PowerShell 5.1 coupe les arguments qui contiennent des guillemets. Mets-le dans `DUO_MESSAGE`, entre `@'` et `'@`, sans rien échapper. `'@` doit être seul en début de ligne :
+
+```powershell
+$env:DUO_MESSAGE = @'
+Relis les changements non commités de ce dépôt.
+'@
+__CLAUDE_SAFE__ lire
+```
+
+<!-- /windows -->
 Pour un autre modèle, préfixe l'appel avec `DUO_MODEL=<modèle>`.
 
 Lance toujours `claude-safe` hors du sandbox (`require_escalated`), dès le premier essai et même pour `oublie` : il a besoin du réseau, du trousseau et de son dossier d'état. Justification : « Relecture par Claude avec l'abonnement de l'utilisateur, clés API retirées. » Une relecture peut durer plusieurs minutes : attends la fin de la commande.
@@ -40,7 +51,7 @@ Dès qu'une tâche a modifié du code ou une spec, même pour une demande simple
 - **Tours de relecture :** le nombre, trois au maximum.
 - **Tests :** les commandes lancées et leur résultat, ou « aucun ».
 - **Reste ouvert :** ce qui n'est ni corrigé ni vérifié, ou « rien ».
-- **Tokens :** la sortie de `__DUO__/conso`, recopiée telle quelle. Ce script reste dans le sandbox.
+- **Tokens :** la sortie de `__CONSO_CODEX__`, recopiée telle quelle. __CONSO_SANDBOX__
 
 ## Règles communes
 

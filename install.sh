@@ -4,23 +4,53 @@ set -eu
 
 stop() { echo "ARRÊT : $1" >&2; exit 1; }
 
-[ "$(uname)" = Darwin ] || stop "duo ne fonctionne que sur macOS pour l'instant."
+case $(uname) in
+  Darwin) windows= ;;
+  MINGW*|MSYS*) windows=1 ;;
+  *) stop "duo ne fonctionne que sur macOS, et sous Windows depuis Git Bash." ;;
+esac
 [ -z "${CLAUDE_CONFIG_DIR:-}${CODEX_HOME:-}" ] || stop "duo ne gère pas CLAUDE_CONFIG_DIR ni CODEX_HOME."
 cd "$(dirname "$0")"
 duo=$(pwd -P)
 claude=$(command -v claude) || stop "Claude Code est introuvable."
 codex=$(command -v codex) || stop "Codex CLI est introuvable."
 
-/usr/bin/python3 - "$duo" "$codex" "$claude" <<'EOF'
+# Python 3.14 ou plus sait lire les journaux compressés de Codex.
+has_zstd() { "$1" -I -c 'import compression.zstd' 2>/dev/null; }
+if [ -z "$windows" ]; then
+  python=/usr/bin/python3
+  other=$(command -v python3 || true)
+  if [ -n "$other" ] && ! has_zstd "$python" && has_zstd "$other"; then python=$other; fi
+  bash_exe= duo_windows= python_windows=
+else
+  # Les raccourcis python du Microsoft Store ne sont pas de vrais Python : has_zstd les écarte.
+  python=
+  for candidate in $(command -v python3 python || true) \
+      "$(cygpath -u "$LOCALAPPDATA")"/Programs/Python/Python3*/python.exe \
+      "$(cygpath -u "$PROGRAMFILES")"/Python3*/python.exe; do
+    if has_zstd "$candidate"; then python=$candidate; fi
+  done
+  [ -n "$python" ] || stop "Python 3.14 ou plus est introuvable : winget install Python.Python.3.14"
+  # Codex lance ses commandes avec PowerShell : il appelle claude-safe par le bash.exe de Git.
+  bash_exe="$(cygpath -w /)bin\\bash.exe"
+  [ -f "$(cygpath -u "$bash_exe")" ] || stop "bash.exe de Git for Windows est introuvable."
+  duo_windows=$(cygpath -m "$duo") python_windows=$(cygpath -w "$python")
+fi
+
+# Les chemins doivent arriver tels quels : Git Bash convertirait ceux de la forme /c/...
+MSYS2_ARG_CONV_EXCL='*' "$python" -X utf8 - "$duo" "$codex" "$claude" "$python" \
+  "$bash_exe" "$duo_windows" "$python_windows" <<'EOF'
 import datetime
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
 import tempfile
 
-duo, codex, claude = sys.argv[1:]
+duo, codex, claude, python, bash_exe, duo_windows, python_windows = sys.argv[1:]
+windows = bool(duo_windows)
 home = os.path.expanduser('~')
 stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
 backups = os.path.join(home, '.local/state/duo/sauvegardes', f'{stamp}-{os.getpid()}')
@@ -34,8 +64,39 @@ def read(path):
         return source.read()
 
 
+if windows:
+    # Claude lance codex-safe avec son outil Bash, Codex lance claude-safe avec PowerShell.
+    commands = {
+        '__CODEX_SAFE__': f'{duo}/codex-safe',
+        '__CONSO_CLAUDE__': f'{shlex.quote(python)} -X utf8 {duo}/conso',
+        '__CLAUDE_SAFE__': f"& '{bash_exe}' '{duo_windows}/claude-safe'",
+        '__CONSO_CODEX__': f"& '{python_windows}' -X utf8 '{duo_windows}/conso'",
+        # Le sandbox de Codex tourne sous un autre compte Windows, qui ne voit ni Python ni les journaux.
+        '__CONSO_SANDBOX__': 'Lance-le aussi hors du sandbox (`require_escalated`) : sous Windows, le sandbox ne voit ni Python ni les journaux.',
+    }
+else:
+    # conso lance /usr/bin/python3 : un Python plus récent doit être nommé.
+    conso = f'{duo}/conso' if python == '/usr/bin/python3' else f'{shlex.quote(python)} {duo}/conso'
+    commands = {
+        '__CODEX_SAFE__': f'{duo}/codex-safe',
+        '__CONSO_CLAUDE__': conso,
+        '__CLAUDE_SAFE__': f'{duo}/claude-safe',
+        '__CONSO_CODEX__': conso,
+        '__CONSO_SANDBOX__': 'Ce script reste dans le sandbox.',
+    }
+
+
+def instructions(template):
+    text = read(template)
+    # Les passages propres à Windows sont gardés sous Windows et retirés ailleurs.
+    text = re.sub(r'<!-- windows -->\n(.*?)<!-- /windows -->\n', r'\1' if windows else '', text, flags=re.S)
+    for name, command in commands.items():
+        text = text.replace(name, command)
+    return text.strip()
+
+
 def with_block(template, path):
-    block = f"{start}\n{read(template).replace('__DUO__', duo).strip()}\n{end}\n"
+    block = f"{start}\n{instructions(template)}\n{end}\n"
     old = read(path)
     if old.count(start) != old.count(end) or old.count(start) > 1:
         sys.exit(f'ARRÊT : balises duo incohérentes dans {path}. Rien n\'a été modifié.')
@@ -52,7 +113,10 @@ def with_rules(path):
     except ValueError:
         sys.exit(f'ARRÊT : {path} n\'est pas un JSON valide. Rien n\'a été modifié.')
     deny = settings.setdefault('permissions', {}).setdefault('deny', [])
-    missing = [rule for rule in ('Bash(codex *)', f'Bash({codex} *)') if rule not in deny]
+    rules = ['Bash(codex *)', f'Bash({codex} *)']
+    if windows:
+        rules += ['Bash(codex.exe *)', f'Bash({codex}.exe *)', 'PowerShell(codex *)', 'PowerShell(codex.exe *)']
+    missing = [rule for rule in rules if rule not in deny]
     if not missing:
         return text
     deny += missing
@@ -102,8 +166,9 @@ changes = [
 ]
 for path, text in changes:
     save(path, text)
-with open('chemins.sh', 'w', encoding='utf-8') as paths:
-    paths.write(f'CODEX={shlex.quote(codex)}\nCLAUDE={shlex.quote(claude)}\n')
+# Sans newline, Python écrirait des fins de ligne CRLF sous Windows, que sh ne lit pas.
+with open('chemins.sh', 'w', encoding='utf-8', newline='\n') as paths:
+    paths.write(f'CODEX={shlex.quote(codex)}\nCLAUDE={shlex.quote(claude)}\nPYTHON={shlex.quote(python)}\n')
 EOF
 
 echo "Installé. Ouvre une nouvelle session claude ou codex pour charger les consignes."

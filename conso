@@ -13,9 +13,24 @@ import subprocess
 import time
 
 
+def lines(path):
+    # Codex compresse ses journaux en zstd une fois la session finie, et les renomme en .zst.
+    if not path.endswith('.zst'):
+        yield from open(path, encoding='utf-8', errors='replace')
+        return
+    try:
+        from compression import zstd
+    except ImportError:
+        return  # Python trop ancien : ce journal n'est pas compté.
+    try:
+        yield from zstd.open(path, 'rt', encoding='utf-8', errors='replace')
+    except (EOFError, zstd.ZstdError):
+        pass  # Un journal encore en cours d'écriture s'arrête au milieu.
+
+
 def entries(pattern):
     for path in glob.glob(os.path.expanduser(pattern)):
-        for line in open(path, errors='replace'):
+        for line in lines(path):
             try:
                 yield json.loads(line)
             except ValueError:
@@ -41,12 +56,11 @@ def claude_tokens(session):
 @functools.cache
 def codex_children():
     children = {}
-    for path in glob.glob(os.path.expanduser('~/.codex/sessions/*/*/*/*.jsonl')):
-        with open(path, errors='replace') as log:
-            try:
-                meta = json.loads(log.readline()).get('payload') or {}
-            except ValueError:
-                continue
+    for path in glob.glob(os.path.expanduser('~/.codex/sessions/*/*/*/*.jsonl*')):
+        try:
+            meta = json.loads(next(lines(path))).get('payload') or {}
+        except (StopIteration, ValueError):
+            continue
         children.setdefault(meta.get('parent_thread_id'), []).append(meta.get('id'))
     return children
 
@@ -54,7 +68,7 @@ def codex_children():
 def codex_thread_tokens(thread):
     # Chaque événement redonne le total du fil, reprises comprises : seul le dernier compte.
     usage = {}
-    for entry in entries(f'~/.codex/sessions/*/*/*/*{thread}.jsonl'):
+    for entry in entries(f'~/.codex/sessions/*/*/*/*{thread}.jsonl*'):
         payload = entry.get('payload') or {}
         if payload.get('type') == 'token_count' and payload.get('info'):
             usage = payload['info']['total_token_usage']
@@ -71,13 +85,14 @@ def codex_tokens(session):
 
 def remembered(name):
     root = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
-    key = hashlib.sha256((root or os.getcwd()).encode()).hexdigest()[:16]
+    # Sous Windows, commun.sh écrit C:/... avec des barres obliques, comme git.
+    key = hashlib.sha256((root or os.getcwd().replace(os.sep, '/')).encode()).hexdigest()[:16]
     path = os.path.expanduser(f'~/.local/state/duo/{key}.{name}')
     try:
         # Comme dans commun.sh : un fil de plus de 12 heures est oublié.
         if time.time() - os.path.getmtime(path) > 12 * 3600:
             return []
-        return open(path).read().split()
+        return open(path, encoding='utf-8').read().split()
     except OSError:
         return []
 

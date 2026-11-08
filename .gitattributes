@@ -1,0 +1,2 @@
+# Les scripts tournent sous bash, même sous Windows : pas de fins de ligne CRLF.
+* text=auto eol=lf

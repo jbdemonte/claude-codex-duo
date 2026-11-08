@@ -5,6 +5,7 @@
 #   claude-safe coder "message"  Claude modifie le projet, sans commiter ni pousser
 #   claude-safe oublie           la prochaine demande repart de zéro
 #
+# Le message peut aussi venir de DUO_MESSAGE, sans le deuxième argument.
 # Claude garde le fil de la conversation entre deux appels du même projet.
 # Option : DUO_MODEL=<modèle> pour choisir un autre modèle.
 set -u
@@ -17,19 +18,18 @@ talk() {
   check_claude
   memory=$(memory_file claude)
   session=$(recent_session claude)
-  log=$(mktemp -t duo-claude)
-  set -- "$1" "$2" ${session:+--resume "$session"}
-  mode=$1 message=$2
-  shift 2
+  log=$(temporary duo-claude)
+  mode=$1 prompt=$2
+  set -- ${session:+--resume "$session"}
   if [ "$mode" = coder ]; then
     set -- "$@" --permission-mode acceptEdits --allowedTools Bash \
       --disallowedTools 'Bash(git push *),Bash(git merge *),Bash(git commit *),Bash(git rebase *),Bash(git reset *),Bash(git -C *),Bash(git -c *)'
   else
     set -- "$@" --permission-mode default --disallowedTools 'Write,Edit,NotebookEdit'
   fi
-  safe_env "$CLAUDE" -p "$message" --model "$model" --output-format json "$@" >"$log" 2>&1 </dev/null
+  safe_env "$CLAUDE" -p --model "$model" --output-format json "$@" >"$log" 2>&1 <"$prompt"
   code=$?
-  /usr/bin/python3 -I - "$log" "$memory" "$code" 2>/dev/null <<'EOF' || { tail -n 20 "$log" >&2; stop "Claude a échoué (code $code). Journal : $log"; }
+  run_python - "$log" "$memory" "$code" 2>/dev/null <<'EOF' || { tail -n 20 "$log" >&2; stop "Claude a échoué (code $code). Journal : $(shown "$log")"; }
 import json, sys
 log, memory, code = sys.argv[1:]
 text = open(log, errors='replace').read()
@@ -45,8 +45,8 @@ EOF
 
 case "${1:-}" in
   lire|coder)
-    [ $# -eq 2 ] || stop "usage : claude-safe $1 \"message\""
-    talk "$1" "$2"
+    prompt=$(message_file "$@") || exit 1
+    talk "$1" "$prompt"
     ;;
   oublie)
     rm -f "$(memory_file claude)"

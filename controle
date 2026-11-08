@@ -15,10 +15,15 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 
 # Au-delà du quota, Codex puise dans les crédits payants : on s'arrête avant.
 CODEX_QUOTA_MAX = 90
+
+WINDOWS = os.name == 'nt'
+PROGRAM_DATA = os.environ.get('ProgramData', r'C:\ProgramData')
+PROGRAM_FILES = os.environ.get('ProgramFiles', r'C:\Program Files')
 
 # Lecture ligne à ligne : le Python de macOS n'a pas de parseur TOML. Un profil inactif est donc
 # refusé lui aussi, ce qui va dans le sens de la prudence.
@@ -35,9 +40,25 @@ def home(path):
     return os.path.join(os.path.expanduser('~'), path)
 
 
+def lines(path):
+    # Codex compresse ses journaux en zstd une fois la session finie, et les renomme en .zst.
+    if not path.endswith('.zst'):
+        yield from open(path, encoding='utf-8', errors='replace')
+        return
+    try:
+        from compression import zstd
+    except ImportError:
+        stop('journaux Codex compressés : il faut Python 3.14 ou plus. Installe-le, puis relance ./install.sh.')
+    try:
+        yield from zstd.open(path, 'rt', encoding='utf-8', errors='replace')
+    except (EOFError, zstd.ZstdError):
+        # Un relevé plus récent pourrait se trouver dans la partie illisible.
+        stop(f'journal Codex illisible, appel refusé : {path}')
+
+
 def check_codex_login():
     try:
-        auth = json.load(open(home('.codex/auth.json')))
+        auth = json.load(open(home('.codex/auth.json'), encoding='utf-8'))
     except (OSError, ValueError):
         auth = {}
     if auth.get('auth_mode') != 'chatgpt' or auth.get('OPENAI_API_KEY'):
@@ -46,7 +67,9 @@ def check_codex_login():
 
 def check_codex_destination():
     # Codex ignore ces clés dans le .codex/config.toml d'un projet.
-    for path in (home('.codex/config.toml'), '/etc/codex/config.toml'):
+    system = os.path.join(PROGRAM_DATA, 'OpenAI', 'Codex') if WINDOWS else '/etc/codex'
+    for path in (home('.codex/config.toml'), home('.codex/managed_config.toml'),
+                 os.path.join(system, 'config.toml'), os.path.join(system, 'managed_config.toml')):
         if not os.path.exists(path):
             continue
         for line in open(path, encoding='utf-8'):
@@ -61,25 +84,64 @@ def check_codex_destination():
                 stop(f"{found[1]} dans {path} peut envoyer Codex ailleurs que sur l'abonnement.")
 
 
+def last_reading(path):
+    latest, limits = '', None
+    for line in lines(path):
+        if '"rate_limits"' not in line:
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        found = (event.get('payload') or {}).get('rate_limits')
+        if found and event['timestamp'] > latest:
+            latest, limits = event['timestamp'], found
+    return latest, limits
+
+
 def last_codex_limits():
+    paths = glob.glob(home('.codex/sessions/*/*/*/rollout-*.jsonl*'))
+    if WINDOWS:
+        return last_codex_limits_windows(paths)
     # Seuls les 50 derniers journaux comptent : si les relevés disparaissent, l'appel finit refusé.
-    paths = glob.glob(home('.codex/sessions/*/*/*/rollout-*.jsonl'))
     latest, limits = '', None
     for path in sorted(paths, key=os.path.getmtime, reverse=True)[:50]:
         modified = datetime.datetime.fromtimestamp(os.path.getmtime(path), datetime.timezone.utc)
         if modified.strftime('%Y-%m-%dT%H:%M:%S.%f') < latest:
             break  # Ce journal et les suivants sont plus anciens que le relevé trouvé.
-        for line in open(path, errors='replace'):
-            if '"rate_limits"' not in line:
-                continue
-            try:
-                event = json.loads(line)
-            except ValueError:
-                continue
-            found = (event.get('payload') or {}).get('rate_limits')
-            if found and event['timestamp'] > latest:
-                latest, limits = event['timestamp'], found
+        found = last_reading(path)
+        if found[0] > latest:
+            latest, limits = found
     return limits
+
+
+def last_codex_limits_windows(paths):
+    # Sous Windows, la date de modification d'un journal reste celle de sa création, même quand une
+    # session reprise y écrit encore. Seule sa taille change : chaque journal est lu une fois, puis
+    # relu seulement quand sa taille change. Le relevé de chacun est gardé dans ce fichier.
+    memory = home('.local/state/duo/quota-codex.json')
+    try:
+        known = json.load(open(memory, encoding='utf-8'))
+    except (OSError, ValueError):
+        known = {}
+    readings = {}
+    for path in paths:
+        size = os.path.getsize(path)
+        entry = known.get(path) if isinstance(known, dict) else None
+        if not (isinstance(entry, list) and len(entry) == 3 and entry[0] == size and isinstance(entry[1], str)):
+            entry = [size, *last_reading(path)]
+        readings[path] = entry
+    # Un fichier temporaire par appel : deux contrôles peuvent tourner en même temps. Si la sauvegarde
+    # échoue, le prochain contrôle relira simplement plus de journaux.
+    os.makedirs(os.path.dirname(memory), exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix='.quota-', dir=os.path.dirname(memory))
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
+            json.dump(readings, output)
+        os.replace(temporary, memory)
+    except OSError:
+        os.unlink(temporary)  # Windows refuse de remplacer un fichier qu'un autre contrôle remplace au même moment.
+    return max(((entry[1], entry[2]) for entry in readings.values()), default=('', None), key=lambda found: found[0])[1]
 
 
 def check_codex_quota():
@@ -99,8 +161,11 @@ def check_codex_quota():
 def claude_settings_files():
     root = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
     yield home('.claude/settings.json')
-    yield '/Library/Application Support/ClaudeCode/managed-settings.json'
-    yield from glob.glob('/Library/Application Support/ClaudeCode/managed-settings.d/*.json')
+    managed = ([os.path.join(PROGRAM_FILES, 'ClaudeCode'), os.path.join(PROGRAM_DATA, 'ClaudeCode')] if WINDOWS
+               else ['/Library/Application Support/ClaudeCode'])
+    for folder in managed:
+        yield os.path.join(folder, 'managed-settings.json')
+        yield from glob.glob(os.path.join(folder, 'managed-settings.d', '*.json'))
     for folder in {os.getcwd(), root or os.getcwd()}:
         yield os.path.join(folder, '.claude/settings.json')
         yield os.path.join(folder, '.claude/settings.local.json')
@@ -120,7 +185,7 @@ def check_claude_destination():
 
 
 def check_claude_usage():
-    account = json.load(open(home('.claude.json'))).get('oauthAccount') or {}
+    account = json.load(open(home('.claude.json'), encoding='utf-8')).get('oauthAccount') or {}
     if account.get('hasExtraUsageEnabled') is not False:
         stop("usage supplémentaire Claude activé ou inconnu : coupe-le dans claude.ai, Settings > Usage, puis lance claude auth login pour mettre à jour le compte local.")
 

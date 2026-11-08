@@ -20,13 +20,17 @@ Une demande simple se traite directement, sans spec ni relecture.
 
 ## Comment l'appeler
 
-Passe toujours par `__DUO__/codex-safe`, jamais par `codex` directement :
+Passe toujours par `__CODEX_SAFE__`, jamais par `codex` directement :
 
 - `codex-safe lire "message"` : Codex lit et répond, sans rien modifier.
 - `codex-safe coder "message"` : Codex modifie le projet, sans commiter.
 - `codex-safe review <sha>` : Codex relit un commit.
 - `codex-safe oublie` : à lancer au début d'une nouvelle tâche. Sinon, Codex garde le fil de la conversation dans ce projet.
 
+<!-- windows -->
+Sous Windows, lance `codex-safe` et `conso` avec l'outil Bash, pas avec PowerShell.
+
+<!-- /windows -->
 Pour un autre modèle, préfixe l'appel avec `DUO_MODEL=<modèle>`. Lance `coder` et `review` en arrière-plan, car ils peuvent durer plus de dix minutes.
 
 Si `codex-safe` répond qu'un agent appelé ne peut pas rappeler son collègue, continue seul. S'il échoue autrement, arrête-toi et explique pourquoi en une phrase. Ne contourne pas l'échec : ces contrôles gardent les appels sur les abonnements.
@@ -39,7 +43,7 @@ Dès qu'une tâche a modifié du code ou une spec, même pour une demande simple
 - **Tours de relecture :** le nombre, trois au maximum.
 - **Tests :** les commandes lancées et leur résultat, ou « aucun ».
 - **Reste ouvert :** ce qui n'est ni corrigé ni vérifié, ou « rien ».
-- **Tokens :** la sortie de `__DUO__/conso`, recopiée telle quelle.
+- **Tokens :** la sortie de `__CONSO_CLAUDE__`, recopiée telle quelle.
 
 ## Règles communes
 
