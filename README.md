@@ -51,7 +51,7 @@ Lance `claude` ou `codex` dans ton projet et parle normalement. Il n'y a aucune 
 - « lance Codex en arrière-plan » : il code sans que tu voies son travail
 - « fais relire ton code par Claude »
 
-Pour une nouvelle fonctionnalité, l'agent écrit une spec, la fait relire par son collègue et attend ton accord. Si c'est l'autre agent qui doit coder, il te donne une phrase courte à lui dire dans sa session. Celui qui a codé fait ensuite relire, en quinze tours au maximum. Une demande simple se traite directement, sans spec ni relecture.
+Pour une nouvelle fonctionnalité, l'agent écrit une spec, la fait relire par son collègue et attend ton accord. Si c'est l'autre agent qui doit coder, il te donne une phrase courte à lui dire dans sa session. Celui qui a codé fait ensuite relire, en vingt-cinq tours au maximum. Une demande simple se traite directement, sans spec ni relecture.
 
 Quand une tâche a modifié du code ou une spec, l'agent termine par un bilan : qui a relu, combien de tours, quels tests ont été lancés, ce qui reste ouvert et les tokens utilisés.
 
@@ -81,7 +81,7 @@ Ces protections réduisent le risque sans le supprimer :
 Ces règles sont seulement des consignes, qu'un agent peut oublier :
 
 - Attendre ton accord avant de coder.
-- Limiter la relecture à quinze tours.
+- Limiter la relecture à vingt-cinq tours.
 - Ne pas lancer le code du collègue en arrière-plan sans que tu le demandes.
 - Écrire le bilan de fin de tâche.
 - Ne jamais pousser ni fusionner, et ne pas créer de branche sans demande.
