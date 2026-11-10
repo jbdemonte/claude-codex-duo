@@ -53,8 +53,9 @@ run_python() {
   "$PYTHON" -I -X utf8 "$@"
 }
 
+# controle demande le quota à jour au serveur de Codex : sans clé API, comme pour les appels.
 check_codex() {
-  run_python "$(dirname "$0")/controle" codex || exit 1
+  safe_env "$PYTHON" -I -X utf8 "$(dirname "$0")/controle" codex "$(shown "$CODEX")" || exit 1
 }
 
 check_claude() {
