@@ -22,7 +22,9 @@ import threading
 import time
 
 # Au-delà du quota, Codex puise dans les crédits payants : on s'arrête avant.
-CODEX_QUOTA_MAX = 90
+CODEX_QUOTA_MAX = 95
+# Pour passer outre, l'utilisateur doit le demander : l'agent préfixe alors l'appel avec cette variable.
+OVERRIDE = "Pour passer outre, l'utilisateur doit le demander explicitement (DUO_SANS_QUOTA=1)."
 # Temps laissé au serveur de Codex pour démarrer et donner le quota.
 CODEX_SERVER_DELAY = 15
 
@@ -249,7 +251,7 @@ def live_codex_windows(codex):
         for bucket in (main, *(limits.get('rateLimitsByLimitId') or {}).values()):
             label = '' if bucket.get('limitId') in (None, 'codex') else f" (limite {bucket['limitId']})"
             if bucket.get('rateLimitReachedType'):
-                stop(f"Codex signale une limite atteinte{label}, au-delà l'usage peut devenir payant.")
+                stop(f"Codex signale une limite atteinte{label}, au-delà l'usage peut devenir payant. {OVERRIDE}")
             for window in (bucket['primary'], bucket['secondary']):
                 if window is not None:
                     windows.append((window['usedPercent'], window['resetsAt'], label, True))
@@ -259,6 +261,11 @@ def live_codex_windows(codex):
 
 
 def check_codex_quota():
+    # Le login et la destination restent contrôlés : seul le quota est ignoré.
+    if os.environ.get('DUO_SANS_QUOTA') == '1':
+        print("Attention : verrou du quota Codex coupé (DUO_SANS_QUOTA=1). Au-delà du quota, l'appel puise "
+              "dans les crédits payants.", file=sys.stderr)
+        return
     # Les journaux ne notent le quota qu'après un appel. Seuls, ils ne verraient jamais un
     # renouvellement anticipé, puisque le verrou refuse les appels tant qu'ils disent 100 %.
     windows = live_codex_windows(sys.argv[2]) if len(sys.argv) > 2 else None
@@ -275,7 +282,8 @@ def check_codex_quota():
         # compte tel quel : l'horloge de la machine peut avancer.
         if used >= CODEX_QUOTA_MAX and (live or reset is None or reset > time.time()):
             date = 'inconnu' if reset is None else datetime.datetime.fromtimestamp(reset).strftime('%d/%m à %H:%M')
-            stop(f"quota Codex à {used:.0f} %{label}, au-delà l'usage peut devenir payant. Prochain renouvellement : {date}.")
+            stop(f"quota Codex à {used:.0f} %{label}, au-delà l'usage peut devenir payant. "
+                 f"Prochain renouvellement : {date}. {OVERRIDE}")
 
 
 def number(value):

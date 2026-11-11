@@ -10,6 +10,7 @@
 # Le message peut aussi venir de DUO_MESSAGE, sans le deuxième argument.
 # Codex garde le fil de la conversation entre deux appels du même projet.
 # Option : DUO_MODEL=<modèle> pour choisir un autre modèle.
+# Option : DUO_SANS_QUOTA=1 pour ignorer le quota, à la demande explicite de l'utilisateur.
 set -u
 . "$(dirname "$0")/commun.sh"
 

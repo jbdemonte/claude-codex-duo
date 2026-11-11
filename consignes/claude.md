@@ -47,6 +47,8 @@ Pour un autre modèle, préfixe l'appel avec `DUO_MODEL=<modèle>`. Lance `coder
 
 Si `codex-safe` répond qu'un agent appelé ne peut pas rappeler son collègue, continue seul. S'il échoue autrement, arrête-toi et explique pourquoi en une phrase. Ne contourne pas l'échec : ces contrôles gardent les appels sur les abonnements.
 
+`codex-safe` refuse à partir de 95 % du quota de Codex. Si l'utilisateur te demande explicitement d'ignorer ce quota, préfixe les appels qu'il désigne avec `DUO_SANS_QUOTA=1`. Ne le fais jamais de toi-même, même après un refus : au-delà du quota, Codex puise dans les crédits payants.
+
 ## Bilan de fin de tâche
 
 Dès qu'une tâche a modifié du code ou une spec, même pour une demande simple, termine ta réponse par ce bilan :

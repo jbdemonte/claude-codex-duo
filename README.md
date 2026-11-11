@@ -15,7 +15,7 @@ Claude Code et Codex CLI travaillent ensemble sur tes projets, avec tes abonneme
 Au-delà du quota, l'usage payant peut prendre le relais au lieu de tout arrêter. Les scripts ont un verrou contre ça, mais il est partiel et ne protège pas un `claude` ou un `codex` lancé à la main :
 
 - **Claude :** avec les crédits d'usage, Claude Code passe au tarif à l'usage. Désactive-les dans [Settings > Usage](https://claude.ai/settings/usage), puis lance `claude auth login` pour mettre à jour le compte local. `claude-safe` refuse de tourner tant qu'ils sont activés.
-- **Codex :** une fois les limites du forfait atteintes, l'usage puise dans le solde de crédits. Vérifie ce solde et le rechargement automatique dans Codex Settings > Usage Dashboard. `codex-safe` s'arrête à 90 % du quota, d'après le quota à jour que donne Codex, ou à défaut d'après les journaux locaux.
+- **Codex :** une fois les limites du forfait atteintes, l'usage puise dans le solde de crédits. Vérifie ce solde et le rechargement automatique dans Codex Settings > Usage Dashboard. `codex-safe` s'arrête à 95 % du quota, d'après le quota à jour que donne Codex, ou à défaut d'après les journaux locaux.
 
 Sur une nouvelle machine, si Codex ne donne pas le quota à jour, il n'y a encore aucun journal : le quota est inconnu et `codex-safe` refuse de tourner. Lance alors une fois `codex` à la main.
 
@@ -71,7 +71,7 @@ Les scripts imposent ces protections :
 Ces protections réduisent le risque sans le supprimer :
 
 - `claude-safe` refuse de tourner si l'usage supplémentaire est activé ou inconnu dans `~/.claude.json`. Ce champ interne reflète le compte à sa dernière mise à jour locale.
-- `codex-safe` refuse de tourner à partir de 90 % du quota. Il demande ce quota au serveur de Codex (`codex app-server`), qui le lit sur ton compte sans appeler de modèle. Si ce serveur ne répond pas, il se fie au dernier relevé des journaux locaux. Ce relevé ne voit ni l'usage d'une autre machine ni un renouvellement fait depuis, et juste après un changement de login, il peut être celui de l'ancien compte. Un appel déjà lancé n'est pas interrompu.
+- `codex-safe` refuse de tourner à partir de 95 % du quota. Il demande ce quota au serveur de Codex (`codex app-server`), qui le lit sur ton compte sans appeler de modèle. Si ce serveur ne répond pas, il se fie au dernier relevé des journaux locaux. Ce relevé ne voit ni l'usage d'une autre machine ni un renouvellement fait depuis, et juste après un changement de login, il peut être celui de l'ancien compte. Un appel déjà lancé n'est pas interrompu.
 - Les réglages déployés par une entreprise avec un outil de gestion des Mac, ou sous Windows par les stratégies du registre, ne sont pas lus.
 - `claude-safe lire` interdit à Claude ses outils d'édition. Une commande déjà autorisée dans ses réglages pourrait quand même écrire.
 - `claude-safe coder` bloque les formes courantes de commit, push, merge, rebase et reset. Claude a accès au shell, donc un autre moyen reste possible.
@@ -83,6 +83,7 @@ Ces règles sont seulement des consignes, qu'un agent peut oublier :
 - Attendre ton accord avant de coder.
 - Limiter la relecture à vingt-cinq tours.
 - Ne pas lancer le code du collègue en arrière-plan sans que tu le demandes.
+- N'utiliser `DUO_SANS_QUOTA=1` que si tu le demandes.
 - Écrire le bilan de fin de tâche.
 - Ne jamais pousser ni fusionner, et ne pas créer de branche sans demande.
 - Ne pas appeler `claude` directement depuis Codex.
@@ -110,6 +111,8 @@ Les agents les utilisent eux-mêmes. Tu n'as pas à les lancer.
 | `conso` | Donne les tokens de la session et du fil du collègue, d'après les journaux locaux |
 
 `DUO_MODEL=<modèle>` choisit un autre modèle pour un appel.
+
+`DUO_SANS_QUOTA=1` coupe le verrou du quota Codex pour un appel : au-delà du quota, cet appel puise dans les crédits payants. Le login et les destinations restent contrôlés. Claude ne l'utilise que si tu le lui demandes explicitement.
 
 ## Mise à jour
 

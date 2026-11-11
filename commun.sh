@@ -36,8 +36,9 @@ esac
 # Aucune clé API ni adresse de fournisseur ne doit atteindre les agents.
 # DUO_ACTIF signale aux agents appelés qu'ils travaillent déjà pour un collègue.
 # CODEX_THREAD_ID ferait passer Claude pour la session de Codex qui l'a appelé dans conso.
+# DUO_SANS_QUOTA ne sert qu'au contrôle, qui le reçoit à part.
 removed='OPENAI_API_KEY CODEX_API_KEY OPENAI_BASE_URL OPENAI_ORG_ID
-  ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ANTHROPIC_PROFILE CODEX_THREAD_ID DUO_MESSAGE'
+  ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ANTHROPIC_PROFILE CODEX_THREAD_ID DUO_MESSAGE DUO_SANS_QUOTA'
 safe_env() {
   # shellcheck disable=SC2046,SC2086
   env $(for name in $removed $(variants $removed); do echo "-u $name"; done) DUO_ACTIF=1 "$@"
@@ -55,7 +56,8 @@ run_python() {
 
 # controle demande le quota à jour au serveur de Codex : sans clé API, comme pour les appels.
 check_codex() {
-  safe_env "$PYTHON" -I -X utf8 "$(dirname "$0")/controle" codex "$(shown "$CODEX")" || exit 1
+  safe_env DUO_SANS_QUOTA="${DUO_SANS_QUOTA:-}" "$PYTHON" -I -X utf8 "$(dirname "$0")/controle" codex "$(shown "$CODEX")" ||
+    exit 1
 }
 
 check_claude() {
