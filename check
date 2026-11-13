@@ -1,11 +1,11 @@
 #!/usr/bin/python3
-"""Refuse un appel dès qu'il pourrait sortir de l'abonnement.
+"""Refuse a call whenever it might use anything outside the subscription.
 
-    controle codex [chemin de codex]   login, destination des requêtes et quota
-    controle claude                    destination des requêtes et usage supplémentaire
+    check codex [codex path]   login, request destination, and quota
+    check claude               request destination and extra usage
 
-N'affiche jamais la valeur d'un réglage. Dans le doute, refuse : si un format
-interne change, les appels s'arrêtent au lieu de passer sans contrôle.
+Never show a setting's value. When in doubt, refuse: if an internal format
+changes, calls stop instead of going through unchecked.
 """
 import datetime
 import glob
@@ -21,26 +21,26 @@ import tempfile
 import threading
 import time
 
-# Au-delà du quota, Codex puise dans les crédits payants : on s'arrête avant.
+# Beyond the quota, Codex draws on paid credits: stop before that.
 CODEX_QUOTA_MAX = 95
-# Pour passer outre, l'utilisateur doit le demander : l'agent préfixe alors l'appel avec cette variable.
-OVERRIDE = "Pour passer outre, l'utilisateur doit le demander explicitement (DUO_SANS_QUOTA=1)."
-# Temps laissé au serveur de Codex pour démarrer et donner le quota.
+# To override, the user must ask: the agent then prefixes the call with this variable.
+OVERRIDE = "Overriding requires the user's explicit request (DUO_IGNORE_QUOTA=1)."
+# Time allowed for the Codex server to start and return the quota.
 CODEX_SERVER_DELAY = 15
 
 WINDOWS = os.name == 'nt'
 PROGRAM_DATA = os.environ.get('ProgramData', r'C:\ProgramData')
 PROGRAM_FILES = os.environ.get('ProgramFiles', r'C:\Program Files')
 
-# Lecture ligne à ligne : le Python de macOS n'a pas de parseur TOML. Un profil inactif est donc
-# refusé lui aussi, ce qui va dans le sens de la prudence.
+# Read line by line: macOS Python has no TOML parser. Inactive profiles are also
+# refused to stay on the safe side.
 CODEX_REDIRECT = re.compile(r"""\s*(?:[\w."' -]+\.)?["']?(openai_base_url|chatgpt_base_url|profile|model_provider)["']?\s*=\s*(.*)""")
 CLAUDE_REDIRECT = re.compile(r'ANTHROPIC_.*(BASE_URL|API_KEY|AUTH_TOKEN)|ANTHROPIC_PROFILE|AWS_BEARER_TOKEN_BEDROCK'
                              r'|CLAUDE_CONFIG_DIR|CLAUDE_CODE_USE_(ANTHROPIC_AWS|BEDROCK|FOUNDRY|MANTLE|VERTEX)')
 
 
 def stop(message):
-    sys.exit(f'ARRÊT : {message}')
+    sys.exit(f'STOP: {message}')
 
 
 def home(path):
@@ -48,19 +48,19 @@ def home(path):
 
 
 def lines(path):
-    # Codex compresse ses journaux en zstd une fois la session finie, et les renomme en .zst.
+    # Codex compresses logs with zstd when a session ends and renames them to .zst.
     if not path.endswith('.zst'):
         yield from open(path, encoding='utf-8', errors='replace')
         return
     try:
         from compression import zstd
     except ImportError:
-        stop('journaux Codex compressés : il faut Python 3.14 ou plus. Installe-le, puis relance ./install.sh.')
+        stop('compressed Codex logs require Python 3.14 or later. Install it, then run ./install.sh again.')
     try:
         yield from zstd.open(path, 'rt', encoding='utf-8', errors='replace')
     except (EOFError, zstd.ZstdError):
-        # Un relevé plus récent pourrait se trouver dans la partie illisible.
-        stop(f'journal Codex illisible, appel refusé : {path}')
+        # The unreadable part could contain a newer reading.
+        stop(f'unreadable Codex log, call refused: {path}')
 
 
 def check_codex_login():
@@ -69,11 +69,11 @@ def check_codex_login():
     except (OSError, ValueError):
         auth = {}
     if auth.get('auth_mode') != 'chatgpt' or auth.get('OPENAI_API_KEY'):
-        stop('Codex doit utiliser le login ChatGPT, sans clé API.')
+        stop('Codex must use the ChatGPT login, without an API key.')
 
 
 def check_codex_destination():
-    # Codex ignore ces clés dans le .codex/config.toml d'un projet.
+    # Codex ignores these keys in a project's .codex/config.toml.
     system = os.path.join(PROGRAM_DATA, 'OpenAI', 'Codex') if WINDOWS else '/etc/codex'
     for path in (home('.codex/config.toml'), home('.codex/managed_config.toml'),
                  os.path.join(system, 'config.toml'), os.path.join(system, 'managed_config.toml')):
@@ -82,13 +82,13 @@ def check_codex_destination():
         for line in open(path, encoding='utf-8'):
             key = line.split('=', 1)[0]
             if '=' in line and '"' in key and '\\' in key:
-                stop(f"clé avec échappement dans {path} : impossible de vérifier où elle envoie Codex.")
+                stop(f"escaped key in {path}: cannot check where it sends Codex.")
             found = CODEX_REDIRECT.match(line)
             if not found:
                 continue
             value = found[2].split('#')[0].strip().strip('"\'')
             if found[1] != 'model_provider' or value != 'openai':
-                stop(f"{found[1]} dans {path} peut envoyer Codex ailleurs que sur l'abonnement.")
+                stop(f"{found[1]} in {path} may send Codex outside the subscription.")
 
 
 def last_reading(path):
@@ -110,12 +110,12 @@ def last_codex_limits():
     paths = glob.glob(home('.codex/sessions/*/*/*/rollout-*.jsonl*'))
     if WINDOWS:
         return last_codex_limits_windows(paths)
-    # Seuls les 50 derniers journaux comptent : si les relevés disparaissent, l'appel finit refusé.
+    # Only the latest 50 logs count: if readings disappear, calls are eventually refused.
     latest, limits = '', None
     for path in sorted(paths, key=os.path.getmtime, reverse=True)[:50]:
         modified = datetime.datetime.fromtimestamp(os.path.getmtime(path), datetime.timezone.utc)
         if modified.strftime('%Y-%m-%dT%H:%M:%S.%f') < latest:
-            break  # Ce journal et les suivants sont plus anciens que le relevé trouvé.
+            break  # This log and the following ones are older than the reading found.
         found = last_reading(path)
         if found[0] > latest:
             latest, limits = found
@@ -123,10 +123,10 @@ def last_codex_limits():
 
 
 def last_codex_limits_windows(paths):
-    # Sous Windows, la date de modification d'un journal reste celle de sa création, même quand une
-    # session reprise y écrit encore. Seule sa taille change : chaque journal est lu une fois, puis
-    # relu seulement quand sa taille change. Le relevé de chacun est gardé dans ce fichier.
-    memory = home('.local/state/duo/quota-codex.json')
+    # On Windows, a log's modification time stays at its creation time, even when a
+    # resumed session keeps writing to it. Only its size changes: read each log once, then
+    # read it again only when its size changes. Keep each reading in this file.
+    memory = home('.local/state/duo/codex-quota.json')
     try:
         known = json.load(open(memory, encoding='utf-8'))
     except (OSError, ValueError):
@@ -138,8 +138,8 @@ def last_codex_limits_windows(paths):
         if not (isinstance(entry, list) and len(entry) == 3 and entry[0] == size and isinstance(entry[1], str)):
             entry = [size, *last_reading(path)]
         readings[path] = entry
-    # Un fichier temporaire par appel : deux contrôles peuvent tourner en même temps. Si la sauvegarde
-    # échoue, le prochain contrôle relira simplement plus de journaux.
+    # One temporary file per call: two checks may run at once. If saving
+    # fails, the next check will simply read more logs again.
     os.makedirs(os.path.dirname(memory), exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix='.quota-', dir=os.path.dirname(memory))
     try:
@@ -147,7 +147,7 @@ def last_codex_limits_windows(paths):
             json.dump(readings, output)
         os.replace(temporary, memory)
     except OSError:
-        os.unlink(temporary)  # Windows refuse de remplacer un fichier qu'un autre contrôle remplace au même moment.
+        os.unlink(temporary)  # Windows refuses to replace a file that another check is replacing at the same time.
     return max(((entry[1], entry[2]) for entry in readings.values()), default=('', None), key=lambda found: found[0])[1]
 
 
@@ -156,11 +156,11 @@ class Refused(Exception):
 
 
 def ask_codex_server(codex):
-    """Demande le quota au serveur de Codex, qui le lit sur le compte sans appeler de modèle."""
+    """Ask the Codex server for the account quota without calling a model."""
     if WINDOWS and not codex.lower().endswith(('.exe', '.cmd')):
-        # Git Bash trouve le script sh installé par npm, que Windows ne lance pas : son voisin, si.
+        # Git Bash finds the sh script installed by npm; Windows can run its sibling instead.
         codex = next((codex + end for end in ('.exe', '.cmd') if os.path.exists(codex + end)), codex)
-    # Sous macOS, un groupe de processus à lui : le serveur et ses descendants s'arrêtent ensemble.
+    # On macOS, use a separate process group to stop the server and its descendants together.
     server = subprocess.Popen([codex, '-c', 'forced_login_method="chatgpt"', '-c', 'model_provider="openai"',
                                'app-server'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                               start_new_session=True)
@@ -179,7 +179,7 @@ def ask_codex_server(codex):
         while True:
             left = deadline - time.monotonic()
             if left <= 0:
-                raise queue.Empty  # Même si le serveur envoie encore des messages.
+                raise queue.Empty  # Even if the server is still sending messages.
             line = received.get(timeout=left)
             if line is None:
                 raise EOFError
@@ -187,7 +187,7 @@ def ask_codex_server(codex):
                 message = json.loads(line)
             except ValueError:
                 continue
-            # Le serveur envoie aussi des notifications et ses propres requêtes, qui ont une méthode.
+            # The server also sends notifications and its own requests, which have a method.
             if isinstance(message, dict) and message.get('id') == number and 'method' not in message:
                 if 'result' not in message:
                     raise Refused
@@ -203,14 +203,14 @@ def ask_codex_server(codex):
         return answer(1)
     finally:
         if WINDOWS:
-            # Windows ne retrouve les descendants, comme Node et Codex derrière le lanceur npm, que
-            # tant que le lanceur vit : tout est arrêté dès la réponse. Si le lanceur s'est arrêté
-            # seul avant ses descendants, ceux-ci peuvent rester ouverts.
+            # Windows can find descendants, such as Node and Codex behind the npm launcher, only
+            # while the launcher lives: stop everything as soon as the answer arrives. If the launcher
+            # has already stopped on its own, its descendants may stay open.
             if server.poll() is None:
                 subprocess.run(['taskkill', '/T', '/F', '/PID', str(server.pid)],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
-            # Fermer son entrée arrête le serveur. Ce qui traîne ensuite est tué, descendants compris.
+            # Closing its input stops the server. Kill anything left, including descendants.
             try:
                 server.stdin.close()
                 server.wait(timeout=3)
@@ -219,7 +219,7 @@ def ask_codex_server(codex):
             try:
                 os.killpg(server.pid, signal.SIGKILL)
             except ProcessLookupError:
-                pass  # Tout le groupe est déjà arrêté.
+                pass  # The whole group has already stopped.
         if server.poll() is None:
             server.kill()
         server.wait()
@@ -230,60 +230,60 @@ def ask_codex_server(codex):
 
 
 def live_codex_windows(codex):
-    """Le quota à jour, ou None si le serveur de Codex ne le donne pas."""
+    """The current quota, or None if the Codex server does not provide it."""
     try:
         limits = ask_codex_server(codex)
     except queue.Empty:
-        reason = f'pas de réponse en {CODEX_SERVER_DELAY} s'
+        reason = f'no answer within {CODEX_SERVER_DELAY} s'
     except EOFError:
-        reason = "Codex s'est arrêté avant de répondre"
+        reason = "Codex stopped before answering"
     except Refused:
-        reason = 'Codex a refusé la demande'
+        reason = 'Codex refused the request'
     except OSError as error:
-        reason = f'Codex ne se lance pas ({type(error).__name__})'
+        reason = f'Codex cannot start ({type(error).__name__})'
     else:
-        # Chaque limite donne ses deux fenêtres, null si elle n'en a pas : un champ absent fait refuser.
-        # La limite principale doit en avoir au moins une.
+        # Each limit provides both windows, null if absent: refuse if a field is missing.
+        # The main limit must have at least one window.
         main = limits['rateLimits']
         if main is None or main['primary'] is None and main['secondary'] is None:
-            stop('quota Codex à jour vide, appel refusé.')
+            stop('empty current Codex quota, call refused.')
         windows = []
         for bucket in (main, *(limits.get('rateLimitsByLimitId') or {}).values()):
-            label = '' if bucket.get('limitId') in (None, 'codex') else f" (limite {bucket['limitId']})"
+            label = '' if bucket.get('limitId') in (None, 'codex') else f" (limit {bucket['limitId']})"
             if bucket.get('rateLimitReachedType'):
-                stop(f"Codex signale une limite atteinte{label}, au-delà l'usage peut devenir payant. {OVERRIDE}")
+                stop(f"Codex reports a reached limit{label}; further usage may incur charges. {OVERRIDE}")
             for window in (bucket['primary'], bucket['secondary']):
                 if window is not None:
                     windows.append((window['usedPercent'], window['resetsAt'], label, True))
         return windows
-    print(f'Note : quota Codex à jour indisponible ({reason}), dernier relevé des journaux utilisé.', file=sys.stderr)
+    print(f'Note: current Codex quota unavailable ({reason}), using the latest log reading.', file=sys.stderr)
     return None
 
 
 def check_codex_quota():
-    # Le login et la destination restent contrôlés : seul le quota est ignoré.
-    if os.environ.get('DUO_SANS_QUOTA') == '1':
-        print("Attention : verrou du quota Codex coupé (DUO_SANS_QUOTA=1). Au-delà du quota, l'appel puise "
-              "dans les crédits payants.", file=sys.stderr)
+    # Login and destination are still checked: only the quota is ignored.
+    if os.environ.get('DUO_IGNORE_QUOTA') == '1':
+        print("Warning: Codex quota guard disabled (DUO_IGNORE_QUOTA=1). Beyond the quota, this call draws "
+              "on paid credits.", file=sys.stderr)
         return
-    # Les journaux ne notent le quota qu'après un appel. Seuls, ils ne verraient jamais un
-    # renouvellement anticipé, puisque le verrou refuse les appels tant qu'ils disent 100 %.
+    # Logs record the quota only after a call. Alone, they would never see an
+    # early reset, since the guard refuses calls as long as they say 100%.
     windows = live_codex_windows(sys.argv[2]) if len(sys.argv) > 2 else None
     if windows is None:
         limits = last_codex_limits() or {}
         windows = [(window['used_percent'], window['resets_at'], '', False)
                    for window in (limits.get('primary'), limits.get('secondary')) if window is not None]
     if not windows:
-        stop('quota Codex inconnu : lance une fois codex à la main, puis recommence.')
+        stop('unknown Codex quota: run codex manually once, then try again.')
     for used, reset, label, live in windows:
         if not (number(used) and (reset is None or number(reset))):
-            stop('quota Codex illisible, appel refusé.')
-        # Un relevé ancien peut dater d'avant un renouvellement passé depuis. Le quota à jour, lui,
-        # compte tel quel : l'horloge de la machine peut avancer.
+            stop('unreadable Codex quota, call refused.')
+        # An old reading may predate a reset that has since happened. Use the current quota
+        # as it is: the machine's clock may be fast.
         if used >= CODEX_QUOTA_MAX and (live or reset is None or reset > time.time()):
-            date = 'inconnu' if reset is None else datetime.datetime.fromtimestamp(reset).strftime('%d/%m à %H:%M')
-            stop(f"quota Codex à {used:.0f} %{label}, au-delà l'usage peut devenir payant. "
-                 f"Prochain renouvellement : {date}. {OVERRIDE}")
+            date = 'unknown' if reset is None else datetime.datetime.fromtimestamp(reset).strftime('%Y-%m-%d %H:%M')
+            stop(f"Codex quota at {used:.0f}%{label}; further usage may incur charges. "
+                 f"Next reset: {date}. {OVERRIDE}")
 
 
 def number(value):
@@ -313,13 +313,13 @@ def check_claude_destination():
         if settings.get('apiKeyHelper'):
             names.append('apiKeyHelper')
         if names:
-            stop(f"{', '.join(names)} dans {path} peut envoyer Claude ailleurs que sur l'abonnement.")
+            stop(f"{', '.join(names)} in {path} may send Claude outside the subscription.")
 
 
 def check_claude_usage():
     account = json.load(open(home('.claude.json'), encoding='utf-8')).get('oauthAccount') or {}
     if account.get('hasExtraUsageEnabled') is not False:
-        stop("usage supplémentaire Claude activé ou inconnu : coupe-le dans claude.ai, Settings > Usage, puis lance claude auth login pour mettre à jour le compte local.")
+        stop("Claude extra usage enabled or unknown: disable it in claude.ai, Settings > Usage, then run claude auth login to update the local account.")
 
 
 CHECKS = {
@@ -331,4 +331,4 @@ try:
     for check in CHECKS[sys.argv[1]]:
         check()
 except (AttributeError, IndexError, KeyError, OSError, TypeError, ValueError) as error:
-    stop(f'contrôle impossible ({type(error).__name__}), appel refusé.')
+    stop(f'cannot check ({type(error).__name__}), call refused.')

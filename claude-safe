@@ -1,15 +1,15 @@
 #!/bin/sh
-# Appelle Claude uniquement avec le login claude.ai. Refuse et s'arrête sinon.
+# Call Claude only with the claude.ai login. Refuse and stop otherwise.
 #
-#   claude-safe lire  "message"  Claude lit et répond, sans rien modifier
-#   claude-safe coder "message"  Claude modifie le projet, sans commiter ni pousser
-#   claude-safe oublie           la prochaine demande repart de zéro
+#   claude-safe read  "message"  Claude reads and answers without changing anything
+#   claude-safe code  "message"  Claude edits the project without committing or pushing
+#   claude-safe forget           start fresh on the next request
 #
-# Le message peut aussi venir de DUO_MESSAGE, sans le deuxième argument.
-# Claude garde le fil de la conversation entre deux appels du même projet.
-# Option : DUO_MODEL=<modèle> pour choisir un autre modèle.
+# The message can also come from DUO_MESSAGE, without a second argument.
+# Claude keeps the conversation between calls in the same project.
+# Option: DUO_MODEL=<model> to choose another model.
 set -u
-. "$(dirname "$0")/commun.sh"
+. "$(dirname "$0")/common.sh"
 
 model=${DUO_MODEL:-opus}
 
@@ -21,7 +21,7 @@ talk() {
   log=$(temporary duo-claude)
   mode=$1 prompt=$2
   set -- ${session:+--resume "$session"}
-  if [ "$mode" = coder ]; then
+  if [ "$mode" = code ]; then
     set -- "$@" --permission-mode acceptEdits --allowedTools Bash \
       --disallowedTools 'Bash(git push *),Bash(git merge *),Bash(git commit *),Bash(git rebase *),Bash(git reset *),Bash(git -C *),Bash(git -c *)'
   else
@@ -29,12 +29,12 @@ talk() {
   fi
   safe_env "$CLAUDE" -p --model "$model" --output-format json "$@" >"$log" 2>&1 <"$prompt"
   code=$?
-  run_python - "$log" "$memory" "$code" 2>/dev/null <<'EOF' || { tail -n 20 "$log" >&2; stop "Claude a échoué (code $code). Journal : $(shown "$log")"; }
+  run_python - "$log" "$memory" "$code" 2>/dev/null <<'EOF' || { tail -n 20 "$log" >&2; stop "Claude failed (code $code). Log: $(shown "$log")"; }
 import json, sys
 log, memory, code = sys.argv[1:]
 text = open(log, errors='replace').read()
 result = json.loads(text[text.index('{'):])
-# Noté même après un échec : l'appel a pu consommer des tokens.
+# Record even after a failure: the call may have used tokens.
 if result.get('session_id'):
     open(memory, 'w').write(result['session_id'] + '\n')
 if code != '0' or result.get('is_error'):
@@ -44,14 +44,14 @@ EOF
 }
 
 case "${1:-}" in
-  lire|coder)
+  read|code)
     prompt=$(message_file "$@") || exit 1
     talk "$1" "$prompt"
     ;;
-  oublie)
+  forget)
     rm -f "$(memory_file claude)"
     ;;
   *)
-    stop 'usage : claude-safe lire "message" | coder "message" | oublie'
+    stop 'usage: claude-safe read "message" | code "message" | forget'
     ;;
 esac

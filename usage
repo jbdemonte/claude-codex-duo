@@ -1,8 +1,8 @@
 #!/usr/bin/python3
-"""Donne une idée des tokens utilisés, à partir des journaux locaux de Claude et de Codex.
+"""Estimate token usage from local Claude and Codex logs.
 
-Compte la session de l'agent qui le lance et le fil en cours de son collègue.
-N'appelle aucun modèle et ne dit rien du quota restant.
+Count the calling agent's session and its colleague's current conversation.
+Call no model and say nothing about the remaining quota.
 """
 import functools
 import glob
@@ -14,18 +14,18 @@ import time
 
 
 def lines(path):
-    # Codex compresse ses journaux en zstd une fois la session finie, et les renomme en .zst.
+    # Codex compresses logs with zstd when a session ends and renames them to .zst.
     if not path.endswith('.zst'):
         yield from open(path, encoding='utf-8', errors='replace')
         return
     try:
         from compression import zstd
     except ImportError:
-        return  # Python trop ancien : ce journal n'est pas compté.
+        return  # Python is too old: skip this log.
     try:
         yield from zstd.open(path, 'rt', encoding='utf-8', errors='replace')
     except (EOFError, zstd.ZstdError):
-        pass  # Un journal encore en cours d'écriture s'arrête au milieu.
+        pass  # A log still being written may end partway through.
 
 
 def entries(pattern):
@@ -38,7 +38,7 @@ def entries(pattern):
 
 
 def claude_tokens(session):
-    # Un message est répété pour chaque bloc de contenu : il ne compte qu'une fois.
+    # A message repeats for each content block: count it only once.
     usages = {}
     for pattern in (f'{session}.jsonl', f'{session}/subagents/*.jsonl'):
         for entry in entries(f'~/.claude/projects/*/{pattern}'):
@@ -66,7 +66,7 @@ def codex_children():
 
 
 def codex_thread_tokens(thread):
-    # Chaque événement redonne le total du fil, reprises comprises : seul le dernier compte.
+    # Each event repeats the conversation total, including resumes: only the last one counts.
     usage = {}
     for entry in entries(f'~/.codex/sessions/*/*/*/*{thread}.jsonl*'):
         payload = entry.get('payload') or {}
@@ -76,7 +76,7 @@ def codex_thread_tokens(thread):
 
 
 def codex_tokens(session):
-    # `codex review` et le relecteur automatique tournent dans des sous-agents à part.
+    # `codex review` and the automatic reviewer run in separate subagents.
     threads = [session]
     for thread in threads:
         threads += codex_children().get(thread, [])
@@ -85,11 +85,11 @@ def codex_tokens(session):
 
 def remembered(name):
     root = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
-    # Sous Windows, commun.sh écrit C:/... avec des barres obliques, comme git.
+    # On Windows, common.sh writes C:/... with forward slashes, like git.
     key = hashlib.sha256((root or os.getcwd().replace(os.sep, '/')).encode()).hexdigest()[:16]
     path = os.path.expanduser(f'~/.local/state/duo/{key}.{name}')
     try:
-        # Comme dans commun.sh : un fil de plus de 12 heures est oublié.
+        # As in common.sh, forget conversations older than 12 hours.
         if time.time() - os.path.getmtime(path) > 12 * 3600:
             return []
         return open(path, encoding='utf-8').read().split()
@@ -99,23 +99,23 @@ def remembered(name):
 
 def show(label, count, sessions):
     if not sessions:
-        print(f'{label} : pas appelé')
+        print(f'{label}: not called')
         return
     totals = [sum(values) for values in zip(*map(count, sessions))]
     if not any(totals):
-        print(f'{label} : inconnu')
+        print(f'{label}: unknown')
         return
-    read, cached, generated = (f'{n:,}'.replace(',', ' ') for n in totals)
-    print(f'{label} : {read} lus, dont {cached} en cache, et {generated} générés')
+    read, cached, generated = (f'{n:,}' for n in totals)
+    print(f'{label}: {read} read, including {cached} cached, and {generated} generated')
 
 
 thread = os.environ.get('CODEX_THREAD_ID')
 session = os.environ.get('CLAUDE_CODE_SESSION_ID')
 if thread:
-    show('Codex, session en cours', codex_tokens, [thread])
-    show('Claude, fil en cours', claude_tokens, remembered('claude'))
+    show('Codex, current session', codex_tokens, [thread])
+    show('Claude, current conversation', claude_tokens, remembered('claude'))
 elif session:
-    show('Claude, session en cours', claude_tokens, [session])
-    show('Codex, fil en cours', codex_tokens, remembered('codex') + remembered('codex-reviews'))
+    show('Claude, current session', claude_tokens, [session])
+    show('Codex, current conversation', codex_tokens, remembered('codex') + remembered('codex-reviews'))
 else:
-    print('Session en cours inconnue.')
+    print('Current session unknown.')

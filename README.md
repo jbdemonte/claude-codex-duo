@@ -1,131 +1,137 @@
 # duo
 
-Claude Code et Codex CLI travaillent ensemble sur tes projets, avec tes abonnements et sans clé API. Chacun peut demander à l'autre de relire ou de donner son avis, sans copier-coller. Quand l'autre doit coder, tu lui donnes le départ dans sa session, pour voir le travail.
+Claude Code and Codex CLI work together on your projects, using your subscriptions without API keys. Each can ask the other to review or give an opinion, without copying and pasting. When the other agent needs to code, you start it in its own session so you can watch the work.
 
-## Prérequis
+## Requirements
 
-- macOS, avec `git` et `/usr/bin/python3`.
-- Ou Windows, avec [Git for Windows](https://git-scm.com/download/win) et Python 3.14 ou plus : `winget install Python.Python.3.14`. Les raccourcis `python` du Microsoft Store ne suffisent pas.
-- Claude Code, connecté avec un compte claude.ai : `claude auth login`.
-- Codex CLI, connecté avec un compte ChatGPT : `codex login`. Les identifiants doivent être dans `~/.codex/auth.json`.
-- `CLAUDE_CONFIG_DIR` et `CODEX_HOME` non définis : `install.sh` s'arrête sinon.
+- macOS, with `git` and `/usr/bin/python3`.
+- Or Windows, with [Git for Windows](https://git-scm.com/download/win) and Python 3.14 or later: `winget install Python.Python.3.14`. Microsoft Store `python` aliases are not enough.
+- Claude Code, logged in with a claude.ai account: `claude auth login`.
+- Codex CLI, logged in with a ChatGPT account: `codex login`. Credentials must be in `~/.codex/auth.json`.
+- `CLAUDE_CONFIG_DIR` and `CODEX_HOME` unset: otherwise `install.sh` stops.
 
-## Avant de commencer : coupe l'usage payant
+## Before starting: disable paid usage
 
-Au-delà du quota, l'usage payant peut prendre le relais au lieu de tout arrêter. Les scripts ont un verrou contre ça, mais il est partiel et ne protège pas un `claude` ou un `codex` lancé à la main :
+Beyond the quota, paid usage can take over instead of stopping everything. The scripts have a guard against this, but it is partial and does not protect a `claude` or `codex` you run manually:
 
-- **Claude :** avec les crédits d'usage, Claude Code passe au tarif à l'usage. Désactive-les dans [Settings > Usage](https://claude.ai/settings/usage), puis lance `claude auth login` pour mettre à jour le compte local. `claude-safe` refuse de tourner tant qu'ils sont activés.
-- **Codex :** une fois les limites du forfait atteintes, l'usage puise dans le solde de crédits. Vérifie ce solde et le rechargement automatique dans Codex Settings > Usage Dashboard. `codex-safe` s'arrête à 95 % du quota, d'après le quota à jour que donne Codex, ou à défaut d'après les journaux locaux.
+- **Claude:** with usage credits, Claude Code switches to usage-based pricing. Disable them in [Settings > Usage](https://claude.ai/settings/usage), then run `claude auth login` to update the local account. `claude-safe` refuses to run while they are enabled.
+- **Codex:** once plan limits are reached, usage draws on the credit balance. Check that balance and automatic top-ups in Codex Settings > Usage Dashboard. `codex-safe` stops at 95% of the quota, based on the current quota from Codex, or local logs if unavailable.
 
-Sur une nouvelle machine, si Codex ne donne pas le quota à jour, il n'y a encore aucun journal : le quota est inconnu et `codex-safe` refuse de tourner. Lance alors une fois `codex` à la main.
+On a new machine, if Codex does not provide the current quota, there are no logs yet: the quota is unknown and `codex-safe` refuses to run. Run `codex` manually once.
 
 ## Installation
 
 ```sh
-git clone <adresse-du-depot> duo
+git clone <repository-url> duo
 cd duo
 ./install.sh
 ```
 
-Ouvre ensuite une nouvelle session `claude` ou `codex` pour charger les consignes.
+Then open a new `claude` or `codex` session to load the instructions.
 
-Sous Windows, lance ces commandes dans Git Bash. Claude appelle Codex avec son outil Bash. Codex, qui travaille sous PowerShell, appelle Claude par le `bash.exe` de Git et lui passe le message dans la variable `DUO_MESSAGE` : PowerShell 5.1 coupe les arguments qui contiennent des guillemets. Les consignes installées expliquent tout cela à Codex.
+On Windows, run these commands in Git Bash. Claude calls Codex with its Bash tool. Codex, which works in PowerShell, calls Claude through Git's `bash.exe` and passes the message in `DUO_MESSAGE`: PowerShell 5.1 splits arguments that contain quotes. The installed instructions explain this to Codex.
 
-Garde ce dossier : les consignes installées pointent vers lui. Si tu le déplaces, relance `./install.sh`.
+Keep this folder: the installed instructions point to it. If you move it, run `./install.sh` again.
 
-`install.sh` peut être relancé sans risque. Il fait quatre choses :
+`install.sh` is safe to run again. It does four things:
 
-- Il ajoute les consignes à `~/.claude/CLAUDE.md` et `~/.codex/AGENTS.md`, entre deux balises `duo`, sans toucher au reste de ces fichiers.
-- Il interdit à Claude d'appeler `codex` directement, dans `~/.claude/settings.json`. Sous Windows, la règle vaut aussi pour son outil PowerShell.
-- Il enregistre les emplacements de `claude`, de `codex` et de Python dans `chemins.sh`, qui n'est pas versionné.
-- Il lance `codex-safe check`, qui vérifie les logins, les réglages et le verrou de dépense. Si ce contrôle échoue, l'installation reste faite, mais duo refuse les appels tant que le point signalé n'est pas réglé.
+- Adds instructions to `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`, between two `duo` markers, without touching the rest of those files.
+- Prevents Claude from calling `codex` directly, in `~/.claude/settings.json`. On Windows, the rule also covers its PowerShell tool.
+- Saves the locations of `claude`, `codex`, and Python in `paths.sh`, which is not tracked.
+- Runs `codex-safe check`, which checks logins, settings, and the spending guard. If the check fails, installation stays in place, but duo refuses calls until the reported issue is resolved.
 
-Avant de modifier l'un de ces trois fichiers de réglages, il le copie dans `~/.local/state/duo/sauvegardes`. `chemins.sh` est simplement recréé.
+Before changing any of these three settings files, it copies it to `~/.local/state/duo/backups`. `paths.sh` is simply recreated.
 
-## Utilisation
+## Usage
 
-Lance `claude` ou `codex` dans ton projet et parle normalement. Il n'y a aucune commande à retenir :
+Run `claude` or `codex` in your project and talk normally. There are no commands to remember:
 
-- « qu'en pense Codex ? »
-- « fais-le faire par Codex » : l'agent te donne la phrase à lui dire dans ta session
-- « lance Codex en arrière-plan » : il code sans que tu voies son travail
-- « fais relire ton code par Claude »
+- "What does Codex think?"
+- "Have Codex do it": the agent gives you a sentence to say in your own session
+- "Run Codex in the background": it codes without you seeing its work
+- "Have Claude review your code"
 
-Pour une nouvelle fonctionnalité, l'agent écrit une spec, la fait relire par son collègue et attend ton accord. Si c'est l'autre agent qui doit coder, il te donne une phrase courte à lui dire dans sa session. Celui qui a codé fait ensuite relire, en vingt-cinq tours au maximum. Une demande simple se traite directement, sans spec ni relecture.
+The agents talk to you in your language; scripts and instructions are in English.
 
-Quand une tâche a modifié du code ou une spec, l'agent termine par un bilan : qui a relu, combien de tours, quels tests ont été lancés, ce qui reste ouvert et les tokens utilisés.
+For a new feature, the agent writes a spec, has its colleague review it, and waits for your approval. If the other agent is to code, it gives you a short sentence to say in that agent's session. Whoever coded then requests a review, up to twenty-five rounds. Simple requests are handled directly, without a spec or review.
 
-Avec `approvals_reviewer = "auto_review"` dans la config Codex, un relecteur automatique décide si Codex peut lancer `claude-safe`. Demande donc la relecture explicitement : un appel que Codex décide seul peut être refusé. Après un refus, `/approve` autorise cette action une fois.
+When a task changes code or a spec, the agent finishes with a summary: who reviewed, how many rounds, which tests ran, what is still open, and tokens used.
 
-## Ce qui est garanti
+With `approvals_reviewer = "auto_review"` in the Codex configuration, an automatic reviewer decides whether Codex may run `claude-safe`. Ask explicitly for the review: a call Codex decides to make on its own may be denied. After a denial, `/approve` allows that action once.
 
-Les scripts imposent ces protections :
+## What is guaranteed
 
-- Les clés API et les adresses de fournisseur sont retirées de l'environnement.
-- L'appel est refusé si le login n'est pas celui d'un abonnement.
-- L'appel est refusé si les réglages visent une autre destination : `openai_base_url`, `chatgpt_base_url`, `profile` ou un autre `model_provider` dans `~/.codex/config.toml`, `~/.codex/managed_config.toml` ou leurs équivalents système (`/etc/codex` sur Mac, `%ProgramData%\OpenAI\Codex` sous Windows), même dans un profil inactif, `ANTHROPIC_BASE_URL`, une clé, `apiKeyHelper` ou un fournisseur cloud dans les réglages de Claude. Seul le nom du réglage est affiché, jamais sa valeur.
-- L'appel est refusé si `CLAUDE_CONFIG_DIR` ou `CODEX_HOME` sont définis, ou si `DUO_MODEL` n'est pas un simple nom de modèle.
-- Un agent appelé ne peut pas rappeler son collègue, donc ils ne peuvent pas s'appeler en boucle.
-- `codex-safe lire` tourne en lecture seule, dans le sandbox de Codex.
+The scripts enforce these protections:
 
-Ces protections réduisent le risque sans le supprimer :
+- API keys and provider addresses are removed from the environment.
+- Calls are refused if the login is not a subscription login.
+- Calls are refused if settings point elsewhere: `openai_base_url`, `chatgpt_base_url`, `profile`, or another `model_provider` in `~/.codex/config.toml`, `~/.codex/managed_config.toml`, or their system equivalents (`/etc/codex` on Mac, `%ProgramData%\OpenAI\Codex` on Windows), even in an inactive profile; `ANTHROPIC_BASE_URL`, a key, `apiKeyHelper`, or a cloud provider in Claude settings. Only the setting's name is shown, never its value.
+- Calls are refused if `CLAUDE_CONFIG_DIR` or `CODEX_HOME` are set, or if `DUO_MODEL` is not a simple model name.
+- A called agent cannot call its colleague back, so they cannot call each other in a loop.
+- `codex-safe read` runs read-only in the Codex sandbox.
 
-- `claude-safe` refuse de tourner si l'usage supplémentaire est activé ou inconnu dans `~/.claude.json`. Ce champ interne reflète le compte à sa dernière mise à jour locale.
-- `codex-safe` refuse de tourner à partir de 95 % du quota. Il demande ce quota au serveur de Codex (`codex app-server`), qui le lit sur ton compte sans appeler de modèle. Si ce serveur ne répond pas, il se fie au dernier relevé des journaux locaux. Ce relevé ne voit ni l'usage d'une autre machine ni un renouvellement fait depuis, et juste après un changement de login, il peut être celui de l'ancien compte. Un appel déjà lancé n'est pas interrompu.
-- Les réglages déployés par une entreprise avec un outil de gestion des Mac, ou sous Windows par les stratégies du registre, ne sont pas lus.
-- `claude-safe lire` interdit à Claude ses outils d'édition. Une commande déjà autorisée dans ses réglages pourrait quand même écrire.
-- `claude-safe coder` bloque les formes courantes de commit, push, merge, rebase et reset. Claude a accès au shell, donc un autre moyen reste possible.
-- `settings.json` bloque les appels habituels à `codex`, mais pas par exemple `npx @openai/codex`.
-- Codex compresse désormais ses journaux. Pour les lire, `controle` a besoin de Python 3.14 ou plus. Sinon, il refuse les appels. Le `/usr/bin/python3` de macOS est plus ancien : si ce refus apparaît sur Mac, installe un Python récent, par exemple avec `brew install python`, puis relance `./install.sh`.
+These protections reduce risk without eliminating it:
 
-Ces règles sont seulement des consignes, qu'un agent peut oublier :
+- `claude-safe` refuses to run if extra usage is enabled or unknown in `~/.claude.json`. This internal field reflects the account at its last local update.
+- `codex-safe` refuses to run at or above 95% of the quota. It asks the Codex server (`codex app-server`) for that quota, which it reads from your account without calling a model. If the server does not answer, it uses the latest reading in local logs. That reading cannot see usage on another machine or a reset since then, and just after a login change it may belong to the previous account. Calls already running are not interrupted.
+- Settings deployed by a company through Mac management tools or Windows registry policies are not read.
+- `claude-safe read` blocks Claude's editing tools. A command already allowed in its settings could still write.
+- `claude-safe code` blocks common forms of commit, push, merge, rebase, and reset. Claude has shell access, so other ways remain possible.
+- `settings.json` blocks usual calls to `codex`, but not, for example, `npx @openai/codex`.
+- Codex now compresses its logs. To read them, `check` needs Python 3.14 or later. Otherwise it refuses calls. macOS's `/usr/bin/python3` is older: if you see this refusal on Mac, install a recent Python, for example with `brew install python`, then run `./install.sh` again.
 
-- Attendre ton accord avant de coder.
-- Limiter la relecture à vingt-cinq tours.
-- Ne pas lancer le code du collègue en arrière-plan sans que tu le demandes.
-- N'utiliser `DUO_SANS_QUOTA=1` que si tu le demandes.
-- Écrire le bilan de fin de tâche.
-- Ne jamais pousser ni fusionner, et ne pas créer de branche sans demande.
-- Ne pas appeler `claude` directement depuis Codex.
+These rules are only instructions, which an agent may forget:
 
-Quatre limites à connaître :
+- Wait for your approval before coding.
+- Limit reviews to twenty-five rounds.
+- Do not start the colleague's coding work in the background unless you ask.
+- Use `DUO_IGNORE_QUOTA=1` only if you ask.
+- Write the end-of-task summary.
+- Never push or merge, and do not create a branch unless asked.
+- Never call `claude` directly from Codex.
 
-- Le verrou de dépense lit des formats internes. S'ils changent, le verrou peut d'abord se fier à un ancien relevé, puis il refuse les appels jusqu'à la mise à jour de `controle`.
-- Un `claude` ou un `codex` que tu lances toi-même ne passe pas par ces scripts. Il utilise le login actif : vérifie-le avec `codex login status` et `claude auth status`.
-- `codex-safe review` n'est pas en lecture seule. Codex peut y exécuter du code et modifier le projet.
-- Sous Windows, le sandbox de Codex tourne sous un autre compte, qui ne voit ni Python ni les journaux : Codex lance donc `conso` hors du sandbox, avec ton accord.
+Four limitations to know:
 
-## Les scripts
+- The spending guard reads internal formats. If they change, it may first use an old reading, then refuse calls until `check` is updated.
+- A `claude` or `codex` you run yourself does not go through these scripts. It uses the active login: check it with `codex login status` and `claude auth status`.
+- `codex-safe review` is not read-only. Codex may execute code and change the project.
+- On Windows, the Codex sandbox runs under another account that cannot see Python or the logs: Codex therefore runs `usage` outside the sandbox, with your approval.
 
-Les agents les utilisent eux-mêmes. Tu n'as pas à les lancer.
+## Scripts
 
-| Commande | Rôle |
+The agents use these themselves. You do not need to run them.
+
+| Command | Role |
 |---|---|
-| `codex-safe lire "message"` | Codex lit et répond, sans rien modifier |
-| `codex-safe coder "message"` | Codex modifie le projet, sans commiter |
-| `codex-safe review <sha>` | Codex relit un commit |
-| `codex-safe check` | Vérifie les logins, les réglages et le verrou de dépense |
-| `claude-safe lire "message"` | Claude lit et répond, sans rien modifier |
-| `claude-safe coder "message"` | Claude modifie le projet, sans commiter |
-| `codex-safe oublie`, `claude-safe oublie` | La prochaine demande repart de zéro |
-| `conso` | Donne les tokens de la session et du fil du collègue, d'après les journaux locaux |
+| `codex-safe read "message"` | Codex reads and answers without changing anything |
+| `codex-safe code "message"` | Codex edits the project without committing |
+| `codex-safe review <sha>` | Codex reviews a commit |
+| `codex-safe check` | Checks logins, settings, and the spending guard |
+| `claude-safe read "message"` | Claude reads and answers without changing anything |
+| `claude-safe code "message"` | Claude edits the project without committing |
+| `codex-safe forget`, `claude-safe forget` | Starts fresh on the next request |
+| `usage` | Reports tokens for the session and the colleague's conversation, from local logs |
 
-`DUO_MODEL=<modèle>` choisit un autre modèle pour un appel.
+`DUO_MODEL=<model>` chooses another model for one call.
 
-`DUO_SANS_QUOTA=1` coupe le verrou du quota Codex pour un appel : au-delà du quota, cet appel puise dans les crédits payants. Le login et les destinations restent contrôlés. Claude ne l'utilise que si tu le lui demandes explicitement.
+`DUO_IGNORE_QUOTA=1` disables the Codex quota guard for one call: beyond the quota, that call draws on paid credits. Login and destinations are still checked. Claude uses it only if you explicitly ask.
 
-## Mise à jour
+Run `tests/run.sh` to test the scripts. Tests cost nothing: they use a temporary home folder and fake agents, with no model or network calls. The test runner supports macOS only and stops before writing anything on other systems.
+
+## Updating
 
 ```sh
 git pull && ./install.sh
 ```
 
-Ouvre ensuite une nouvelle session.
+Then open a new session.
 
-Ces scripts dépendent de formats internes à `claude` et `codex`, qui peuvent changer sans prévenir. Après une mise à jour de l'un des deux, fais un essai sur un dépôt jetable : demande une petite modification à Codex, puis une relecture par Claude. `codex-safe check` ne prouve pas qu'un appel complet fonctionne.
+The installer migrates instruction blocks from older markers to the current markers, and replaces the old generated paths file with `paths.sh`. It leaves old backup folders and quota caches untouched. Do not update while a duo call is running; reopen existing agent sessions afterward so they use the new commands.
 
-## Désinstallation
+These scripts depend on internal `claude` and `codex` formats, which may change without notice. After either is updated, try them on a disposable repository: ask Codex for a small change, then ask Claude for a review. `codex-safe check` does not prove a full call works.
 
-1. Retire le bloc entre les balises `duo` dans `~/.claude/CLAUDE.md` et `~/.codex/AGENTS.md`.
-2. Retire les deux règles `deny` sur `codex` dans `~/.claude/settings.json`, sauf si tu les avais avant duo.
-3. Supprime ce dossier et `~/.local/state/duo`.
+## Uninstalling
+
+1. Remove the block between the `duo` markers in `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`.
+2. Remove the two `codex` deny rules from `~/.claude/settings.json`, unless you had them before duo.
+3. Delete this folder and `~/.local/state/duo`.
