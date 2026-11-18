@@ -11,7 +11,8 @@
 set -u
 . "$(dirname "$0")/common.sh"
 
-model=${DUO_MODEL:-opus}
+# Without DUO_MODEL, Claude uses its own default, like Codex: the model setting in ~/.claude/settings.json.
+model=${DUO_MODEL:+--model $DUO_MODEL}
 
 talk() {
   refuse_nested
@@ -27,7 +28,8 @@ talk() {
   else
     set -- "$@" --permission-mode default --disallowedTools 'Write,Edit,NotebookEdit'
   fi
-  safe_env "$CLAUDE" -p --model "$model" --output-format json "$@" >"$log" 2>&1 <"$prompt"
+  # shellcheck disable=SC2086
+  safe_env "$CLAUDE" -p $model --output-format json "$@" >"$log" 2>&1 <"$prompt"
   code=$?
   run_python - "$log" "$memory" "$code" 2>/dev/null <<'EOF' || { tail -n 20 "$log" >&2; stop "Claude failed (code $code). Log: $(shown "$log")"; }
 import json, sys

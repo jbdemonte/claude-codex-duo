@@ -248,7 +248,13 @@ ok "claude code" run "$duo/claude-safe" code task
 yes_if "claude code accepts edits" argument_pair "$T/home/claude-args" --permission-mode acceptEdits
 yes_if "claude code allows Bash" argument_pair "$T/home/claude-args" --allowedTools Bash
 yes_if "claude code blocks Git mutations" argument_pair "$T/home/claude-args" --disallowedTools 'Bash(git push *),Bash(git merge *),Bash(git commit *),Bash(git rebase *),Bash(git reset *),Bash(git -C *),Bash(git -c *)'
+yes_if "claude uses its own default model" sh -c "! grep -qx -- --model '$T/home/claude-args'"
 ok "forget after claude mode checks" run "$duo/claude-safe" forget
+: >"$T/home/claude-args"
+ok "claude chosen model" run env DUO_MODEL=fable "$duo/claude-safe" read question
+yes_if "claude model passed" argument_pair "$T/home/claude-args" --model fable
+ok "forget after claude model" run "$duo/claude-safe" forget
+yes_if "codex uses its own default model" sh -c "! grep -qx -- -m '$T/home/codex-args'"
 
 # DUO_MODEL
 ok "simple model" run env DUO_MODEL=gpt-6-astra "$duo/codex-safe" read question

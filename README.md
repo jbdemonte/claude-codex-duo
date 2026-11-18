@@ -112,7 +112,7 @@ The agents use these themselves. You do not need to run them.
 | `codex-safe forget`, `claude-safe forget` | Starts fresh on the next request |
 | `usage` | Reports tokens for the session and the colleague's conversation, from local logs |
 
-`DUO_MODEL=<model>` chooses another model for one call.
+By default, each agent uses the model from its own settings, as in your own sessions: `model` in `~/.claude/settings.json` for Claude and `model` in `~/.codex/config.toml` for Codex. To change the default model, change that setting: duo follows it. `DUO_MODEL=<model>` chooses another model for one call.
 
 `DUO_IGNORE_QUOTA=1` disables the Codex quota guard for one call: beyond the quota, that call draws on paid credits. Login and destinations are still checked. Claude uses it only if you explicitly ask.
 
