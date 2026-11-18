@@ -51,7 +51,12 @@ __CLAUDE_SAFE__ read
 ```
 
 <!-- /windows -->
-To use another model, prefix the call with `DUO_MODEL=<model>`.
+Without `DUO_MODEL`, Claude uses its own default model. When the user names a model for a call, for example "have Claude Opus 5.5 review it", prefix that call with `DUO_MODEL=<model>`. Use an alias such as `opus`, `fable` or `sonnet`, or a full model ID such as `claude-opus-5-5`.
+
+<!-- windows -->
+On Windows, set `$env:DUO_MODEL = '<model>'` in the same command, before calling `claude-safe`.
+
+<!-- /windows -->
 
 Always run `claude-safe` outside the sandbox (`require_escalated`), from the first attempt and even for `forget`: it needs the network, keychain, and its state folder. Justification: "Review by Claude on the user's subscription, API keys removed." A review may take several minutes: wait for the command to finish.
 

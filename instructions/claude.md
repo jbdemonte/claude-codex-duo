@@ -45,7 +45,7 @@ Always use `__CODEX_SAFE__`, never `codex` directly:
 On Windows, run `codex-safe` and `usage` with the Bash tool, not PowerShell.
 
 <!-- /windows -->
-To use another model, prefix the call with `DUO_MODEL=<model>`. Run `code` and `review` in the background, as they may take more than ten minutes.
+Without `DUO_MODEL`, Codex uses its own default model. When the user names a model for a call, prefix that call with `DUO_MODEL=<model>`, using the name Codex gives that model. Run `code` and `review` in the background, as they may take more than ten minutes.
 
 If `codex-safe` says an agent called by its colleague cannot call it back, continue alone. If it fails for another reason, stop and explain why in one sentence. Do not bypass the failure: these checks keep calls on subscriptions.
 
